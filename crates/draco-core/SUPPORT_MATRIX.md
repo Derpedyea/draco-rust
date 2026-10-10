@@ -242,7 +242,10 @@ refused on its own.
   current streams in: a separate main traversal symbol stream, raw-bit (not
   rANS) start faces, a split-count/mode prefix, hole events after topology
   splits, a 2-bit split-edge selector, fixed-u32 counts before bitstream 2.0,
-  and an always-present header flags field.
+  and an always-present header flags field. Points are numbered as Draco
+  1.5.7 numbers them for every version: a vertex slot a split symbol empties
+  is filled from the end of the table only when the stream has no attribute
+  data, and otherwise stays in place.
 - **Pre-2.3 KD-tree.** Draco `1.0.0` to `1.2.5` chose the KD-tree for a point
   cloud of float positions alone and wrote bitstreams 2.0 to 2.2 in a layout of
   their own: a method byte, the point count again, and for float positions a

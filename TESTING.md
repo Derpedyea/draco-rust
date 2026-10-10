@@ -113,6 +113,55 @@ gltf-transform draco <in> <out>.glb --quantize-position 6 --quantize-normal 4 --
 gltf-transform draco <in> <out>.glb --quantization-volume scene
 ```
 
+### Legacy Streams Against C++
+
+File: `crates/draco-core/tests/rust_vs_cpp_decode_test.rs`
+
+Package: `draco-core`
+
+Purpose: what the `legacy_bitstream_encode` feature writes, bitstreams 1.1 to
+2.2, read by C++ Draco. The streams decode there with the expected geometry,
+normals and texture coordinates, and for a mesh with split symbols and
+attribute data the two decoders give the same faces and the same position and
+normal bits for every point -- the case where a split's emptied vertex slot
+decides the point order. It needs the C++ tools.
+
+```sh
+cargo test --manifest-path crates/Cargo.toml -p draco-core --features legacy_bitstream_encode,legacy_bitstream_decode --test rust_vs_cpp_decode_test
+```
+
+### Loader Attributes Against draco3d
+
+File: `web/tests/draco-attribute-parity.ts`
+
+Purpose: `decode_draco`, which the npm decoder's three.js loader drives,
+against the `draco3d` 1.5.7 package. For every `.drc` fixture, every attribute
+and every typed array a loader can ask for, the values match
+`GetAttributeDataArrayForAllPoints` byte for byte or both refuse; the index,
+the geometry type and a lookup by semantic agree too. Fourteen streams written
+by upstream's encoder add normalized, negative and edge values no fixture has.
+Needs the converter's `www/pkg` build.
+
+```sh
+cd web && npm run test:draco-attributes
+```
+
+### three.js Loader Against DRACOLoader
+
+File: `web/tests/three-draco-loader.spec.ts`
+
+Purpose: `createDracoLoader(THREE)` from `@draco-rust/decoder/three` against
+three.js's own `DRACOLoader`, in a browser through `GLTFLoader`. Every Draco
+glTF fixture and every `.drc` fixture (by type, and by unique id in narrow
+types) must build the same geometry: index, attribute types, normalization,
+padding and bytes. Where a requested type cannot hold a value, DRACOLoader
+keeps whatever its failed conversion left in memory and this loader refuses;
+the test counts those apart.
+
+```sh
+cd web && npx playwright test --config tests/playwright.config.ts three-draco-loader
+```
+
 ## C++ I/O Smoke Examples
 
 ### Focused Real I/O Smoke Test
