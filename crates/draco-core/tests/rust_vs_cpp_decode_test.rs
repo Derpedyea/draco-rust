@@ -310,6 +310,8 @@ struct CppDecoded {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     num_faces: usize,
+    /// The corners of each triangle, from the face element's first list.
+    faces: Vec<[u32; 3]>,
 }
 
 /// Runs the C++ decoder and returns what it produced.
@@ -441,8 +443,9 @@ fn parse_binary_ply(bytes: &[u8], context: &str) -> CppDecoded {
     // Walk the face records too, so a truncated face section is caught rather
     // than trusted from the header count alone.
     let mut cursor = num_vertices * vertex_stride;
+    let mut faces = Vec::with_capacity(num_faces);
     for face in 0..num_faces {
-        for &(count_size, entry_size) in &face_lists {
+        for (list, &(count_size, entry_size)) in face_lists.iter().enumerate() {
             assert!(
                 cursor + count_size <= body.len(),
                 "{context}: PLY face {face} is truncated"
@@ -451,6 +454,13 @@ fn parse_binary_ply(bytes: &[u8], context: &str) -> CppDecoded {
                 .iter()
                 .rev()
                 .fold(0usize, |acc, &b| (acc << 8) | b as usize);
+            let entries = cursor + count_size;
+            if list == 0 && count == 3 && entry_size == 4 && entries + 12 <= body.len() {
+                faces.push(std::array::from_fn(|corner| {
+                    let at = entries + corner * 4;
+                    u32::from_le_bytes(body[at..at + 4].try_into().unwrap())
+                }));
+            }
             cursor += count_size + count * entry_size;
             assert!(
                 cursor <= body.len(),
@@ -463,6 +473,7 @@ fn parse_binary_ply(bytes: &[u8], context: &str) -> CppDecoded {
         positions,
         normals,
         num_faces,
+        faces,
     }
 }
 
@@ -1076,6 +1087,88 @@ fn cpp_decodes_legacy_normal_and_tex_coord_encodings() {
                 TEX_COORD_TOLERANCE,
                 &format!("{name} tex coords"),
             );
+        }
+    }
+}
+
+/// The legacy streams this crate writes number their points the same way in
+/// this decoder as in C++, not only carry the same values.
+///
+/// The annulus has holes, so the traversal emits split symbols, and normals
+/// and tex coords give the stream attribute data. That is the case in which a
+/// split leaves an emptied vertex slot that C++ keeps in place rather than
+/// filling from the end of the table, for every bitstream version, so the
+/// point order -- and with it the index -- depends on following that rule.
+/// The faces and every point's position and normal are compared bit for bit.
+#[test]
+#[cfg(feature = "legacy_bitstream_encode")]
+fn cpp_numbers_the_points_of_legacy_streams_with_seams_as_this_decoder_does() {
+    let decoder_exe = require_cpp_tool(DECODER);
+    let tmp = std::env::temp_dir().join("draco_cpp_legacy_point_order");
+    fs::create_dir_all(&tmp).expect("create temp dir");
+
+    for (major, minor) in [(2u8, 2u8), (2, 1), (2, 0), (1, 2), (1, 1)] {
+        for speed in [0, 5] {
+            let (mesh, _) = multi_attribute_annulus_mesh(17);
+            let position_id = mesh.named_attribute_id(GeometryAttributeType::Position);
+            let normal_id = mesh.named_attribute_id(GeometryAttributeType::Normal);
+            let tex_coord_id = mesh.named_attribute_id(GeometryAttributeType::TexCoord);
+
+            let mut options = EncoderOptions::default();
+            options.set_version(major, minor);
+            options.set_global_int("encoding_method", 1); // EdgeBreaker
+            options.set_global_int("encoding_speed", speed);
+            options.set_global_int("decoding_speed", speed);
+            options.set_attribute_int(position_id, "quantization_bits", 14);
+            options.set_attribute_int(normal_id, "quantization_bits", 12);
+            options.set_attribute_int(tex_coord_id, "quantization_bits", 12);
+
+            let mut encoder = MeshEncoder::new();
+            encoder.set_mesh(mesh);
+            let mut encoded = EncoderBuffer::new();
+            encoder
+                .encode(&options, &mut encoded)
+                .unwrap_or_else(|err| {
+                    panic!("v{major}.{minor} speed {speed}: encode failed: {err:?}")
+                });
+
+            let name = format!("legacy_order_v{major}_{minor}_s{speed}");
+            let drc_path = tmp.join(format!("{name}.drc"));
+            let ply_path = tmp.join(format!("{name}.ply"));
+            fs::write(&drc_path, encoded.data()).expect("write Rust DRC");
+            let theirs = run_cpp_decoder(&decoder_exe, &drc_path, &ply_path, &name);
+
+            let mut ours = Mesh::new();
+            MeshDecoder::new()
+                .decode(&mut DecoderBuffer::new(encoded.data()), &mut ours)
+                .unwrap_or_else(|err| panic!("{name}: Rust decode failed: {err:?}"));
+            let faces: Vec<[u32; 3]> = (0..ours.num_faces())
+                .map(|face| ours.face(FaceIndex(face as u32)).map(|point| point.0))
+                .collect();
+            assert_eq!(theirs.faces.len(), theirs.num_faces, "{name}: C++ faces");
+            assert_eq!(faces, theirs.faces, "{name}: the index differs");
+
+            let position = ours.attribute(ours.named_attribute_id(GeometryAttributeType::Position));
+            let normal = ours.attribute(ours.named_attribute_id(GeometryAttributeType::Normal));
+            let bits = |v: [f32; 3]| v.map(f32::to_bits);
+            assert_eq!(
+                theirs.positions.len(),
+                ours.num_points(),
+                "{name}: point count"
+            );
+            for point in 0..ours.num_points() {
+                let at = PointIndex(point as u32);
+                assert_eq!(
+                    bits(read_position(position, at)),
+                    bits(theirs.positions[point]),
+                    "{name}: position of point {point}"
+                );
+                assert_eq!(
+                    bits(read_normal(normal, at)),
+                    bits(theirs.normals[point]),
+                    "{name}: normal of point {point}"
+                );
+            }
         }
     }
 }
