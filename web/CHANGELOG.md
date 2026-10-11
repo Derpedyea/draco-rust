@@ -8,6 +8,8 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+## [0.1.2] - 2026-10-11
+
 - **`@draco-rust/decoder` loads glTF's Draco meshes for three.js, on workers.**
   - `decode_draco` returns attributes by unique id or by type, in the typed
     array a loader asks for. Its conversions match upstream Draco 1.5.7's byte
@@ -24,7 +26,11 @@ has changed in them; each package version has a section of its own.
     5 KiB of gzip each.
 - **`@draco-rust/gltf` reads a value by JSON Pointer** with
   `asset.jsonAt("/nodes/0/translation")`.
-
+- **`@draco-rust/decoder/legacy` decodes older streams as Draco 1.5.7 does**,
+  from draco-core 2.3.2: EdgeBreaker streams older than 2.2 that carry
+  attributes number their points as 1.5.7 does, and octahedral normals of
+  streams older than 2.0 come out bit for bit as from 1.5.7 and the `draco3d`
+  package three.js uses.
 - **KTX2 textures decode faster in the converter.** The transcoder in
   `ktx2-wasm` is now built for speed rather than size, as the Draco codec and
   the format readers already were: UASTC textures decode up to 2.4 times as
