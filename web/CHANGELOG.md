@@ -8,6 +8,8 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+## [0.2.0] - 2026-10-11
+
 - **`@draco-rust/decoder/three` exports three.js's `DRACOLoader` itself**,
   decoding on the package's workers: `gltfLoader.setDRACOLoader(new
   DRACOLoader())`. It replaces `createDracoLoader(THREE)`, which took three's

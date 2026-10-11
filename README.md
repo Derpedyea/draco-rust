@@ -84,7 +84,7 @@ npm install @draco-rust/decoder
 Or straight from jsDelivr, without a bundler:
 
 ```js
-import init, { parse_drc_bytes } from "https://cdn.jsdelivr.net/npm/@draco-rust/decoder@0.1/mesh/index.js";
+import init, { parse_drc_bytes } from "https://cdn.jsdelivr.net/npm/@draco-rust/decoder@0.2/mesh/index.js";
 await init();
 ```
 

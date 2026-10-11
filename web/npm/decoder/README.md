@@ -114,7 +114,7 @@ package's other entries do not need it.
 ### From a CDN, without a bundler
 
 ```js
-import init, { parse_drc_bytes } from "https://cdn.jsdelivr.net/npm/@draco-rust/decoder@0.1/mesh/index.js";
+import init, { parse_drc_bytes } from "https://cdn.jsdelivr.net/npm/@draco-rust/decoder@0.2/mesh/index.js";
 await init(); // finds index_bg.wasm next to the script
 ```
 
