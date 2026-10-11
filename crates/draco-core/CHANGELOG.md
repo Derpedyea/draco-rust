@@ -8,6 +8,35 @@ the crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.2](https://github.com/Filyus/draco-rust/compare/draco-core-v2.3.1...draco-core-v2.3.2) - 2026-10-11
+
+### Fixed
+
+- **Older EdgeBreaker streams number their points as Draco 1.5.7 does.** When
+  a split symbol merges two vertices, the slot it empties is now filled from
+  the end of the table only if the stream has no attribute data, as Draco
+  1.5.7 does for every bitstream version. Streams older than 2.2 that carry
+  normals, texture coordinates or other attributes used to have every emptied
+  slot filled, which gave the same triangles and the same values at every
+  corner, but through a reordered index. Their index and point order now match
+  Draco 1.5.7's byte for byte, both for the legacy fixtures and for the old
+  bitstreams this crate writes with `legacy_bitstream_encode`. Streams of 2.2
+  and later are unchanged.
+- **Octahedral normals of streams older than 2.0 decode bit for bit as in
+  Draco 1.5.7.** They were turned into vectors with the arithmetic of Draco
+  0.9.1 to 1.3.x, a few ulps away from what 1.5.7 and the `draco3d` npm
+  package, which three.js uses, produce for the same file. Every bitstream
+  version now uses the 1.5.7 arithmetic, as every C++ release applies one
+  conversion to all versions. The output no longer matches the decoders of
+  0.9.1 to 1.3.x bit for bit.
+- **Bitstream 2.0 written with `legacy_bitstream_encode` now decodes in Draco
+  1.0.0 when normals use geometric prediction**, as they do at encoding speed
+  0. The encoder predicted normals by triangle area and wrote that mode at
+  every bitstream below 2.2, but triangle area came with Draco 1.1.0 and
+  bitstream 2.1. Draco 1.0.0, the release that wrote 2.0, predicts from one
+  triangle and refuses any other mode. At 2.0 the encoder now predicts and
+  writes as 1.0.0 did. Draco 1.5.7 and this crate read the stream either way.
+
 ## [2.3.1](https://github.com/Filyus/draco-rust/compare/draco-core-v2.3.0...draco-core-v2.3.1) - 2026-10-10
 
 ### Added
