@@ -41,9 +41,11 @@ const run = (args: string[], cwd: string) =>
   ).toString();
 try {
   for (const name of packages) run(['pack', '--silent', '--pack-destination', project], join(dist, name));
+  // three, the decoder's optional peer, from this repository's own install.
+  run(['pack', '--silent', '--pack-destination', project], fileURLToPath(new URL('../node_modules/three/', import.meta.url)));
   writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
   const tarballs = readdirSync(project).filter((file) => file.endsWith('.tgz'));
-  assert.equal(tarballs.length, packages.length);
+  assert.equal(tarballs.length, packages.length + 1);
   run(['install', '--silent', '--no-audit', '--no-fund', '--offline', ...tarballs.map((file) => `./${file}`)], project);
 
   writeFileSync(join(project, 'consumer.mjs'), `
@@ -185,53 +187,46 @@ for (const spec of Object.keys(decoders)) {
   await assert.rejects(pool.decode(streams.mesh), /disposed/);
 }
 
-// The three.js adapter builds geometry with the classes it is handed; these
-// stand in for three's own and record what was built.
-class BufferAttribute {
-  constructor(array, itemSize) { Object.assign(this, { array, itemSize, normalized: false, count: array.length / itemSize }); }
-  setXYZ(i, x, y, z) { this.array.set([x, y, z], i * this.itemSize); }
-}
-class BufferGeometry {
-  attributes = {};
-  index = null;
-  setIndex(index) { this.index = index; }
-  setAttribute(name, attribute) { this.attributes[name] = attribute; }
-}
-let converted = 0;
-class Color {
-  fromBufferAttribute(attribute, i) { [this.r, this.g, this.b] = attribute.array.subarray(i * attribute.itemSize); return this; }
-}
-const ColorManagement = { colorSpaceToWorking(color, space) { assert.equal(space, 'srgb'); converted += 1; return color; } };
-const { createDracoLoader } = await import('@draco-rust/decoder/three');
+// The three.js loader is three's own DRACOLoader, decoding on the pool, in Node
+// as in a browser: the same class GLTFLoader takes, with three as the
+// application's peer dependency.
+const { REVISION, BufferGeometry, InterleavedBufferAttribute } = await import('three');
+const { DRACOLoader: ThreeDRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+const { DRACOLoader } = await import('@draco-rust/decoder/three');
 const { decode_draco } = await load('@draco-rust/decoder');
-const loader = createDracoLoader({ BufferGeometry, BufferAttribute, Color, ColorManagement }, { workers: 2 }).preload();
+const loader = new DRACOLoader(undefined, { workers: 2 }).preload();
+assert.ok(loader instanceof ThreeDRACOLoader, "it is three's DRACOLoader");
 
-// A .drc file, read by attribute type, with its sRGB colours made linear.
-const cloud = await loader.parseAsync(streams.cloud.slice().buffer);
+// A .drc file, read by attribute type.
+const cloud = await new Promise((resolve, reject) => loader.parse(streams.cloud.slice().buffer, resolve, reject));
+assert.ok(cloud instanceof BufferGeometry);
 const reference = decode_draco(streams.cloud, [{ semantic: 'POSITION', type: 'Float32Array' }]);
 assert.deepEqual(cloud.attributes.position.array, reference.attributes[0].array);
 assert.equal(cloud.index, null, 'a point cloud has no index');
-assert.equal(converted, cloud.attributes.color.count, 'every colour went through the colour space');
-assert.equal(cloud.attributes.color.normalized, false, 'float colours are not normalized');
 
-// GLTFLoader's call: attributes by unique id, in the accessor's types.
+// GLTFLoader's call: attributes by unique id, in the accessor's types. A
+// three-byte colour is padded to four from r181, as three's own does it.
 const ids = Object.fromEntries(decode_draco(streams.cloud, undefined).attributes.map((a) => [a.semantic === 'COLOR' ? 'color' : 'position', a.uniqueId]));
 const buffer = streams.cloud.slice().buffer;
-const gltf = await new Promise((resolve, reject) =>
-  loader.decodeDracoFile(buffer, resolve, ids, { position: 'Float32Array', color: 'Uint8Array' }, 'srgb-linear', reject));
-assert.ok(gltf.attributes.color.array instanceof Uint8Array);
-assert.equal(gltf.attributes.color.normalized, true, 'integer colours are normalized');
-assert.equal(converted, cloud.attributes.color.count, 'linear colours are left alone');
+const types = { position: 'Float32Array', color: 'Uint8Array' };
+const viaIds = await new Promise((resolve, reject) => loader.decodeDracoFile(buffer, resolve, ids, types, 'srgb-linear', reject));
+assert.ok(viaIds.attributes.color.array instanceof Uint8Array);
+assert.equal(viaIds.attributes.color.normalized, true, 'integer colours are normalized');
+assert.equal(viaIds.attributes.color instanceof InterleavedBufferAttribute, Number(REVISION) >= 181);
 assert.equal(buffer.byteLength, 0, 'the buffer went to the worker');
 // A shared primitive asks again with the same buffer and gets the same geometry.
-const again = await new Promise((resolve, reject) =>
-  loader.decodeDracoFile(buffer, resolve, ids, { position: 'Float32Array', color: 'Uint8Array' }, 'srgb-linear', reject));
-assert.equal(again, gltf);
+const again = await new Promise((resolve, reject) => loader.decodeDracoFile(buffer, resolve, ids, types, 'srgb-linear', reject));
+assert.equal(again, viaIds);
 
-const mesh = await loader.parseAsync(streams.mesh);
-assert.ok(mesh.index.array instanceof Uint32Array && mesh.index.array.length > 0);
-const refused = await new Promise((resolve) => loader.decodeDracoFile(new ArrayBuffer(3), () => resolve(null), { position: 0 }, null, undefined, resolve));
-assert.ok(refused instanceof Error, 'a stream that does not decode reaches onError');
+// A whole Draco glTF, through GLTFLoader.
+const gltf = await new GLTFLoader().setDRACOLoader(loader).parseAsync((await fixture('bun_zipper.glb')).buffer, '');
+let triangles = 0;
+gltf.scene.traverse((object) => { if (object.geometry) triangles += object.geometry.index.count / 3; });
+assert.equal(triangles, 69451);
+
+const failed = await new Promise((resolve) => loader.decodeDracoFile(new ArrayBuffer(3), () => resolve(null), { position: 0 }, null, undefined, resolve));
+assert.ok(failed instanceof Error, 'a stream that does not decode reaches onError');
 loader.dispose();
 
 console.log('npm-packages: OK (4 decoder entries with their pools, three.js adapter, encoder, 3 glTF entries, FBX, OBJ, PLY, STL)');

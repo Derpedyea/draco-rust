@@ -8,6 +8,14 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+- **`@draco-rust/decoder/three` exports three.js's `DRACOLoader` itself**,
+  decoding on the package's workers: `gltfLoader.setDRACOLoader(new
+  DRACOLoader())`. It replaces `createDracoLoader(THREE)`, which took three's
+  whole namespace, kept every export of three in a bundle, and was not the
+  type `setDRACOLoader` asks for. Being three's class, it builds geometry as
+  the installed three does, and it matches three's own loader byte for byte
+  from r150 to r186. `three` is now an optional peer dependency, `>=0.150.0`.
+
 ## [0.1.2] - 2026-10-11
 
 - **`@draco-rust/decoder` loads glTF's Draco meshes for three.js, on workers.**

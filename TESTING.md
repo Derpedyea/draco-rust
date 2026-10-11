@@ -156,11 +156,12 @@ cd web && npm run test:draco-attributes
 
 File: `web/tests/three-draco-loader.spec.ts`
 
-Purpose: `createDracoLoader(THREE)` from `@draco-rust/decoder/three` against
-three.js's own `DRACOLoader`, in a browser through `GLTFLoader`. Every Draco
+Purpose: the `DRACOLoader` `@draco-rust/decoder/three` exports against
+three.js's own, in a browser through `GLTFLoader`. Every Draco
 glTF fixture and every `.drc` fixture (by type, and by unique id in narrow
 types) must build the same geometry: index, attribute types, normalization,
-padding and bytes. Where a requested type cannot hold a value, DRACOLoader
+padding and bytes, with the three installed and with `three-floor`, the
+oldest release of the peer range. Where a requested type cannot hold a value, DRACOLoader
 keeps whatever its failed conversion left in memory and this loader refuses;
 the test counts those apart.
 

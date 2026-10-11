@@ -46,7 +46,6 @@ await context.route(`${ORIGIN}/**`, async (route) => {
 
 // Runs in the page: builds the arm's loader and returns timings.
 async function arm({ which, scenario, rounds }) {
-  const THREE = await import('three');
   const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
   const fetchBytes = async (p) => (await fetch(p)).arrayBuffer();
   const glb = await fetchBytes('/testdata/bun_zipper.glb');
@@ -57,8 +56,8 @@ async function arm({ which, scenario, rounds }) {
   const t0 = performance.now();
   let loader;
   if (which.startsWith('ours')) {
-    const { createDracoLoader } = await import('/decoder/mesh/three.js');
-    loader = createDracoLoader(THREE, { workers: 4 });
+    const { DRACOLoader } = await import('/decoder/mesh/three.js');
+    loader = new DRACOLoader(undefined, { workers: 4 });
   } else {
     const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
     loader = new DRACOLoader().setWorkerLimit(4);

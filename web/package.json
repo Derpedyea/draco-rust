@@ -91,6 +91,7 @@
     "draco3d": "1.5.7",
     "gltf-validator": "2.0.0-dev.3.10",
     "three": "0.186.1",
+    "three-floor": "npm:three@0.150.1",
     "typescript": "^7.0.2"
   }
 }

@@ -85,31 +85,31 @@ webpack do, emits the worker on its own.
 
 ### With three.js
 
-`createDracoLoader` stands in for three.js's `DRACOLoader`, on the pool. It
-takes three's classes rather than importing three, so it builds with your own
-copy:
+`@draco-rust/decoder/three` exports `DRACOLoader`: three.js's own
+`DRACOLoader`, decoding on this package's workers instead of the Draco decoder
+three fetches with `setDecoderPath`. Everything else is three's class, so it
+goes wherever one is expected, TypeScript included:
 
 ```js
-import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createDracoLoader } from "@draco-rust/decoder/mesh/three";
+import { DRACOLoader } from "@draco-rust/decoder/mesh/three";
 
-const gltfLoader = new GLTFLoader();
-gltfLoader.setDRACOLoader(createDracoLoader(THREE));
+const gltfLoader = new GLTFLoader().setDRACOLoader(new DRACOLoader());
 const gltf = await gltfLoader.loadAsync("model.glb");
 ```
 
-For a `.drc` file, `await loader.parseAsync(arrayBuffer)` returns a
-`BufferGeometry`, and `parse(buffer, onLoad, onError)` works as DRACOLoader's
-does. Vertex colours from a `.drc` file are converted from sRGB, as
-DRACOLoader converts them, and an attribute whose items are not a multiple of
-four bytes is padded and interleaved, as DRACOLoader pads it since r181. The
-geometry is the one DRACOLoader builds, byte for byte, with one difference: an
-attribute that does not convert to the type asked for -- a negative value
-into a `Uint16Array`, say -- is an error here, where DRACOLoader fills the
-attribute with whatever its failed conversion left in memory. `setWorkerLimit`,
-`preload` and `dispose` are there too. In TypeScript, `setDRACOLoader` expects the `DRACOLoader` class, so cast
-the loader: `createDracoLoader(THREE) as unknown as DRACOLoader`.
+`load`, `parse`, `setWorkerLimit`, `preload` and `dispose` work as three's do,
+and so does the geometry: three builds it, so vertex colours, normalization and
+the padding r181 added follow the three you have. Byte for byte it is the
+geometry three's own loader builds, with one difference: an attribute that
+does not convert to the type asked for -- a negative value into a
+`Uint16Array`, say -- is an error here, where three's loader fills the
+attribute with whatever its failed conversion left in memory.
+
+The constructor takes three's `LoadingManager` and then the pool's options,
+`new DRACOLoader(manager, { workers: 2 })`, or `{ pool }` to share one pool
+between loaders. `three` is a peer dependency, from r150 (`0.150.0`); the
+package's other entries do not need it.
 
 ### From a CDN, without a bundler
 

@@ -2,13 +2,19 @@
  * `@draco-rust/decoder/three` against three.js's own DRACOLoader, in GLTFLoader.
  *
  * Every Draco glTF fixture loads twice through three's GLTFLoader, once with
- * its DRACOLoader and once with `createDracoLoader(THREE)`, and every `.drc`
+ * three's DRACOLoader and once with this package's, and every `.drc`
  * fixture goes through each loader's `parse`. The geometries must agree: the
  * index, and each attribute's name, array type, item size, normalization,
  * interleaving and bytes. The page is assembled from files on disk -- three
  * from node_modules, the converter's `drc` build as the entry's `index.js`,
  * and the adapter's modules from `web/npm/decoder/entry/` -- so it runs with
  * what CI builds and needs no `build-tool --npm`.
+ *
+ * It runs once for three as installed and once for `three-floor`, the oldest
+ * release in the package's peer range, so the range's floor stays tested.
+ * `THREE_DIR` runs it for any other three instead: a directory holding a
+ * release's `build/` and `examples/jsm/`, such as a tag extracted from the
+ * repository.
  */
 import { expect, test } from '@playwright/test';
 import { readdirSync } from 'node:fs';
@@ -19,6 +25,9 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const web = path.resolve(here, '..');
 const testdata = path.resolve(web, '..', 'testdata');
+const threeDirs = process.env.THREE_DIR
+  ? [process.env.THREE_DIR]
+  : ['three', 'three-floor'].map((name) => path.join(web, 'node_modules', name));
 
 const gltfFixtures = [
   'Box/glTF_Binary/Box_Draco.glb',
@@ -58,13 +67,13 @@ const types: Record<string, string> = {
   '.json': 'application/json',
 };
 
-test('createDracoLoader builds what DRACOLoader builds, in GLTFLoader and for .drc files', async ({ context, page: tab }) => {
+for (const threeDir of threeDirs) test(`this DRACOLoader builds what three's builds, with ${path.basename(threeDir)}`, async ({ context, page: tab }) => {
   test.setTimeout(120_000);
   await context.route('**/__t/**', async (route) => {
     const at = new URL(route.request().url()).pathname.slice('/__t/'.length);
     let file: string | undefined;
     if (at === 'page.html') return route.fulfill({ body: page, contentType: 'text/html' });
-    if (at.startsWith('three/')) file = path.join(web, 'node_modules', at);
+    if (at.startsWith('three/')) file = path.join(threeDir, at.slice('three/'.length));
     else if (at.startsWith('testdata/')) file = path.join(testdata, at.slice('testdata/'.length));
     else file = files[at];
     if (!file) return route.fulfill({ status: 404 });
@@ -81,13 +90,14 @@ test('createDracoLoader builds what DRACOLoader builds, in GLTFLoader and for .d
 
   const report = await tab.evaluate(
     async ({ gltfFixtures, drcFixtures }) => {
-      const THREE: any = await import('three' as string);
+      const { REVISION }: any = await import('three' as string);
       const { GLTFLoader }: any = await import('three/addons/loaders/GLTFLoader.js' as string);
       const { DRACOLoader }: any = await import('three/addons/loaders/DRACOLoader.js' as string);
-      const { createDracoLoader }: any = await import('/__t/decoder/three.js' as string);
+      const { DRACOLoader: OurDRACOLoader }: any = await import('/__t/decoder/three.js' as string);
 
-      const theirs = new DRACOLoader();
-      const ours = createDracoLoader(THREE, { workers: 2 });
+      const theirs = new DRACOLoader().setDecoderPath('/__t/three/examples/jsm/libs/draco/');
+      const ours = new OurDRACOLoader(undefined, { workers: 2 });
+      if (!(ours instanceof DRACOLoader)) throw new Error('not an instance of three\'s DRACOLoader');
       const theirGltf = new GLTFLoader().setDRACOLoader(theirs);
       const ourGltf = new GLTFLoader().setDRACOLoader(ours);
 
@@ -161,10 +171,14 @@ test('createDracoLoader builds what DRACOLoader builds, in GLTFLoader and for .d
         }
         for (const type of ['Uint8Array', 'Int16Array', 'Uint16Array']) {
           const typesOf = Object.fromEntries(Object.keys(ids).map((name) => [name, type]));
+          // Before r160 decodeDracoFile takes no onError and reports a failure
+          // only through the promise it returns; from r160 that promise has
+          // already handed it to onError. Listening to both covers every release.
           const call = (loader: any) =>
-            new Promise((resolve) =>
-              loader.decodeDracoFile(bytes.slice(0), resolve, ids, typesOf, 'srgb', (error: unknown) => resolve({ error })),
-            );
+            new Promise((resolve) => {
+              const failed = (error: unknown) => resolve({ error });
+              Promise.resolve(loader.decodeDracoFile(bytes.slice(0), resolve, ids, typesOf, 'srgb', failed)).catch(failed);
+            });
           const [x, y]: any[] = await Promise.all([call(ours), call(theirs)]);
           // Where upstream's conversion fails, DRACOLoader does not look at
           // the result and builds the attribute from whatever the failed
@@ -187,7 +201,7 @@ test('createDracoLoader builds what DRACOLoader builds, in GLTFLoader and for .d
       }
       ours.dispose();
       theirs.dispose();
-      return { mismatches, attributes, interleaved, refused, unconvertible };
+      return { revision: Number.parseInt(REVISION, 10), mismatches, attributes, interleaved, refused, unconvertible };
     },
     { gltfFixtures, drcFixtures },
   );
@@ -195,9 +209,11 @@ test('createDracoLoader builds what DRACOLoader builds, in GLTFLoader and for .d
   expect(errors).toEqual([]);
   expect(report.mismatches).toEqual([]);
   expect(report.attributes).toBeGreaterThan(100);
-  expect(report.interleaved).toBeGreaterThan(0);
+  // Padding came with r181; before it, three builds every attribute plain.
+  if (report.revision >= 181) expect(report.interleaved).toBeGreaterThan(0);
+  else expect(report.interleaved).toBe(0);
   console.log(
-    `three-draco-loader: ${gltfFixtures.length} glTF files and ${drcFixtures.length} .drc files, ` +
+    `three-draco-loader, three r${report.revision}: ${gltfFixtures.length} glTF files and ${drcFixtures.length} .drc files, ` +
       `${report.attributes} attributes the same as DRACOLoader's (${report.interleaved} padded), ` +
       `${report.refused} refused by both, ${report.unconvertible} unconvertible requests refused here and left ` +
       'to memory by DRACOLoader',

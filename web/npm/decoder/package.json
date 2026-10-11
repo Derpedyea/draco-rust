@@ -67,6 +67,14 @@
     "**/*.d.ts",
     "**/*.wasm"
   ],
+  "peerDependencies": {
+    "three": ">=0.150.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public"
   }

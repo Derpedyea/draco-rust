@@ -479,7 +479,7 @@ File: `web/scripts/bench-three-draco-loader.mjs`
 runs upstream's Draco 1.5.7 decoder, both on four workers in headless
 Chromium. Medians, two runs; the same-source control is within 3%:
 
-| scenario | `createDracoLoader` | `DRACOLoader` | |
+| scenario | draco-rust | three's `DRACOLoader` | |
 | --- | ---: | ---: | ---: |
 | `bun_zipper.glb` through `GLTFLoader`, warm | `19.7-20.8 ms` | `32.3 ms` | `1.55-1.64x` |
 | 16 `bunny_gltf.drc` (edgebreaker) at once | `76.1-77.1 ms` | `100.9-103.8 ms` | `1.33-1.35x` |
