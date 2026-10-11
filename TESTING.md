@@ -126,6 +126,12 @@ attribute data the two decoders give the same faces and the same position and
 normal bits for every point -- the case where a split's emptied vertex slot
 decides the point order. It needs the C++ tools.
 
+A modern decoder reads every version, so it shows a stream is valid Draco but
+not that the release it was written for reads it. Setting
+`DRACO_LEGACY_DECODER_0_9_1`, `_0_10_0`, `_1_0_0`, `_1_1_0` and `_1_3_0` to
+builds of those releases adds each as a reader of its own bitstream (1.1, 1.2,
+2.0, 2.1 and 2.2); an unset one is skipped.
+
 ```sh
 cargo test --manifest-path crates/Cargo.toml -p draco-core --features legacy_bitstream_encode,legacy_bitstream_decode --test rust_vs_cpp_decode_test
 ```
