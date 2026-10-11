@@ -680,6 +680,13 @@ impl<'a> MeshPredictionSchemeGeometricNormalEncoder<'a> {
     /// encoder options. Without this the newest layout is written.
     pub fn set_bitstream_version(&mut self, major: u8, minor: u8) {
         self.bitstream_version = crate::version::bitstream_version(major, minor);
+        // Bitstream 2.0 is Draco 1.0.0's, which predicted from one triangle,
+        // wrote mode 0 and refuses any other; triangle area came with 2.1.
+        self.prediction_mode = if self.bitstream_version != 0 && self.bitstream_version < 0x0201 {
+            NormalPredictionMode::OneTriangle
+        } else {
+            NormalPredictionMode::TriangleArea
+        };
     }
 
     pub fn init(&mut self, mesh_data: &MeshPredictionSchemeData<'a>) {
@@ -1090,6 +1097,30 @@ mod tests {
     use crate::geometry_attribute::GeometryAttributeType;
     use crate::geometry_indices::{FaceIndex, PointIndex};
     use crate::prediction_scheme::EntryToPointIdMap;
+
+    /// The byte after the transform's two `i32`s is the prediction mode below
+    /// bitstream 2.2: Draco 1.0.0, which wrote 2.0, knew one triangle (0) only
+    /// and refuses anything else, and triangle area (1) came with 2.1.
+    #[cfg(feature = "encoder")]
+    #[test]
+    fn the_prediction_mode_written_is_the_one_its_bitstream_knew() {
+        use crate::prediction_scheme::PredictionSchemeEncoder;
+        use crate::prediction_scheme_normal_octahedron_canonicalized_encoding_transform::PredictionSchemeNormalOctahedronCanonicalizedEncodingTransform as Transform;
+        for (major, minor, mode) in [(2u8, 0u8, Some(0u8)), (2, 1, Some(1)), (2, 2, None)] {
+            let mut encoder = MeshPredictionSchemeGeometricNormalEncoder::new(Transform::new(255));
+            encoder.set_bitstream_version(major, minor);
+            let mut data = Vec::new();
+            encoder.encode_prediction_data(&mut data).unwrap();
+            match mode {
+                Some(mode) => assert_eq!(data[8], mode, "bitstream {major}.{minor}"),
+                None => assert_eq!(
+                    encoder.prediction_mode,
+                    NormalPredictionMode::TriangleArea,
+                    "bitstream {major}.{minor} writes no mode and means triangle area"
+                ),
+            }
+        }
+    }
 
     #[test]
     fn mesh_geometric_normal_position_lookup_returns_zero_when_entry_map_is_too_short() {
