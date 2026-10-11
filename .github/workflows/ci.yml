@@ -41,6 +41,7 @@ jobs:
           --skip cpp_decodes_the_legacy_streams_this_crate_writes
           --skip cpp_decodes_legacy_normal_and_tex_coord_encodings
           --skip cpp_decodes_the_predictive_traversal_this_crate_writes
+          --skip cpp_numbers_the_points_of_legacy_streams_with_seams_as_this_decoder_does
 
       - name: Install cargo-hack
         uses: taiki-e/install-action@v2
@@ -278,6 +279,7 @@ jobs:
           --skip cpp_decodes_the_legacy_streams_this_crate_writes
           --skip cpp_decodes_legacy_normal_and_tex_coord_encodings
           --skip cpp_decodes_the_predictive_traversal_this_crate_writes
+          --skip cpp_numbers_the_points_of_legacy_streams_with_seams_as_this_decoder_does
 
       # The point of the job. These readers and writers take paths from the
       # caller, open files, and spell floats into text; `--features test` adds
