@@ -681,8 +681,10 @@ impl<'a> MeshPredictionSchemeGeometricNormalEncoder<'a> {
     pub fn set_bitstream_version(&mut self, major: u8, minor: u8) {
         self.bitstream_version = crate::version::bitstream_version(major, minor);
         // Bitstream 2.0 is Draco 1.0.0's, which predicted from one triangle,
-        // wrote mode 0 and refuses any other; triangle area came with 2.1.
-        self.prediction_mode = if self.bitstream_version != 0 && self.bitstream_version < 0x0201 {
+        // wrote mode 0 and refuses any other; triangle area came with 2.1. No
+        // release wrote this scheme below 2.0, so an explicit request there
+        // keeps the mode it always had.
+        self.prediction_mode = if self.bitstream_version == 0x0200 {
             NormalPredictionMode::OneTriangle
         } else {
             NormalPredictionMode::TriangleArea
@@ -974,7 +976,7 @@ impl<'a> PredictionSchemeEncoder<'a, i32, i32> for MeshPredictionSchemeGeometric
             pos_pred_normal_oct[0] = s_pos;
             pos_pred_normal_oct[1] = t_pos;
 
-            let neg_normal_3d = [-pred_normal_3d[0], -pred_normal_3d[1], -pred_normal_3d[2]];
+            let neg_normal_3d = pred_normal_3d.map(i32::wrapping_neg);
             let (s_neg, t_neg) = self
                 .octahedron_tool_box
                 .integer_vector_to_quantized_octahedral_coords(&neg_normal_3d);
@@ -1106,7 +1108,12 @@ mod tests {
     fn the_prediction_mode_written_is_the_one_its_bitstream_knew() {
         use crate::prediction_scheme::PredictionSchemeEncoder;
         use crate::prediction_scheme_normal_octahedron_canonicalized_encoding_transform::PredictionSchemeNormalOctahedronCanonicalizedEncodingTransform as Transform;
-        for (major, minor, mode) in [(2u8, 0u8, Some(0u8)), (2, 1, Some(1)), (2, 2, None)] {
+        for (major, minor, mode) in [
+            (1u8, 2u8, Some(1u8)),
+            (2, 0, Some(0)),
+            (2, 1, Some(1)),
+            (2, 2, None),
+        ] {
             let mut encoder = MeshPredictionSchemeGeometricNormalEncoder::new(Transform::new(255));
             encoder.set_bitstream_version(major, minor);
             let mut data = Vec::new();

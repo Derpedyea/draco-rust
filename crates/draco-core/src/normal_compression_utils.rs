@@ -152,13 +152,21 @@ impl OctahedronToolBox {
             s = self.max_value;
             t = self.max_value;
         } else if s == 0 && t > self.center_value {
-            t = self.center_value - (t - self.center_value);
+            t = self
+                .center_value
+                .wrapping_sub(t.wrapping_sub(self.center_value));
         } else if s == self.max_value && t < self.center_value {
-            t = self.center_value + (self.center_value - t);
+            t = self
+                .center_value
+                .wrapping_add(self.center_value.wrapping_sub(t));
         } else if t == self.max_value && s < self.center_value {
-            s = self.center_value + (self.center_value - s);
+            s = self
+                .center_value
+                .wrapping_add(self.center_value.wrapping_sub(s));
         } else if t == 0 && s > self.center_value {
-            s = self.center_value - (s - self.center_value);
+            s = self
+                .center_value
+                .wrapping_sub(s.wrapping_sub(self.center_value));
         }
         (s, t)
     }
@@ -190,8 +198,12 @@ impl OctahedronToolBox {
             vec[0] = ((vec[0] as i64 * self.center_value as i64) / abs_sum) as i32;
             vec[1] = ((vec[1] as i64 * self.center_value as i64) / abs_sum) as i32;
             // `vec[0]` and `vec[1]` are now the scaled values, whose magnitudes
-            // sum to at most `center_value`, so these stay in range.
-            let remainder = self.center_value - vec[0].wrapping_abs() - vec[1].wrapping_abs();
+            // sum to at most `center_value` -- unless an `i32::MIN` made the sum
+            // above too small, when they are anything, and release C++ wraps.
+            let remainder = self
+                .center_value
+                .wrapping_sub(vec[0].wrapping_abs())
+                .wrapping_sub(vec[1].wrapping_abs());
             vec[2] = if vec[2] >= 0 {
                 remainder
             } else {
@@ -200,27 +212,35 @@ impl OctahedronToolBox {
         }
     }
 
+    /// Maps a vector on the diamond `|x| + |y| + |z| = center_value` to its
+    /// octahedral coordinates.
+    ///
+    /// The vector is usually on the diamond, having come through
+    /// [`Self::canonicalize_integer_vector`], but not always: a geometric
+    /// normal predicted from one triangle, as Draco 1.0.0 predicts it for
+    /// bitstream 2.0, sizes the normal by a sum truncated to 32 bits, so a
+    /// large one reaches here off the diamond. Upstream only checks the
+    /// invariant in debug builds and carries on in release, so the arithmetic
+    /// wraps as release C++ does, and the encoder and decoder agree on the
+    /// result.
     pub fn integer_vector_to_quantized_octahedral_coords(&self, int_vec: &[i32; 3]) -> (i32, i32) {
-        let abs_sum = int_vec[0].abs() + int_vec[1].abs() + int_vec[2].abs();
-        debug_assert_eq!(abs_sum, self.center_value);
-
         let s;
         let t;
         if int_vec[0] >= 0 {
             // Right hemisphere.
-            s = int_vec[1] + self.center_value;
-            t = int_vec[2] + self.center_value;
+            s = int_vec[1].wrapping_add(self.center_value);
+            t = int_vec[2].wrapping_add(self.center_value);
         } else {
             // Left hemisphere.
             if int_vec[1] < 0 {
-                s = int_vec[2].abs();
+                s = int_vec[2].wrapping_abs();
             } else {
-                s = self.max_value - int_vec[2].abs();
+                s = self.max_value.wrapping_sub(int_vec[2].wrapping_abs());
             }
             if int_vec[2] < 0 {
-                t = int_vec[1].abs();
+                t = int_vec[1].wrapping_abs();
             } else {
-                t = self.max_value - int_vec[1].abs();
+                t = self.max_value.wrapping_sub(int_vec[1].wrapping_abs());
             }
         }
         self.canonicalize_octahedral_coords(s, t)
@@ -319,19 +339,33 @@ mod tests {
     /// with "attempt to negate with overflow". The read that produced the
     /// extreme value is gone -- predictors now see the portable `int32` copy --
     /// but nothing stops the next caller, so the arithmetic is what is pinned.
+    ///
+    /// The canonicalized vector then goes on, with its negation, to octahedral
+    /// coordinates, as the geometric-normal encoder and decoder send it. Off
+    /// the diamond, which `i32::MIN` leaves it, that mapping overflowed too;
+    /// the `encode_drc` replay reached it once bitstream 2.0 predicted from one
+    /// triangle, whose 32-bit sum lets a vector this large through unscaled.
     #[test]
     fn canonicalizing_a_vector_at_the_integer_minimum_does_not_panic() {
-        let mut tool_box = OctahedronToolBox::new();
-        assert!(tool_box.set_quantization_bits(8));
+        for bits in [5, 8] {
+            let mut tool_box = OctahedronToolBox::new();
+            assert!(tool_box.set_quantization_bits(bits));
 
-        for vec in [
-            [i32::MIN, 0, 0],
-            [0, i32::MIN, 0],
-            [0, 0, i32::MIN],
-            [i32::MIN, i32::MIN, i32::MIN],
-        ] {
-            let mut vec = vec;
-            tool_box.canonicalize_integer_vector(&mut vec);
+            for vec in [
+                [i32::MIN, 0, 0],
+                [0, i32::MIN, 0],
+                [0, 0, i32::MIN],
+                [i32::MIN, i32::MIN, i32::MIN],
+                // The magnitudes outside `i32::MIN` sum just past 2^31, so the
+                // wrapped sum is tiny and the scaled values are not.
+                [i32::MIN, (1 << 30) + 5, 1 << 30],
+                [1 << 30, i32::MIN, -((1 << 30) + 7)],
+            ] {
+                let mut vec = vec;
+                tool_box.canonicalize_integer_vector(&mut vec);
+                tool_box.integer_vector_to_quantized_octahedral_coords(&vec);
+                tool_box.integer_vector_to_quantized_octahedral_coords(&vec.map(i32::wrapping_neg));
+            }
         }
     }
 }
