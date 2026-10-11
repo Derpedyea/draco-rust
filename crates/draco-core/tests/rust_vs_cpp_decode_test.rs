@@ -772,6 +772,33 @@ fn annulus_mesh(n: usize) -> (Mesh, Vec<[f32; 3]>) {
     (mesh, positions)
 }
 
+/// The C++ release that wrote bitstream `major.minor`, when the environment
+/// names a build of it: the reader a stream of that version was written for.
+///
+/// A modern decoder reads every version, so `DRACO_CPP_DECODER` alone checks
+/// that a stream is valid Draco; only the decoder of its own era sees what
+/// changed in the format after it, such as the rANS run token 1.2 added. The
+/// variables are the ones `drc_existing_files_test.rs` reads for the
+/// historical fixtures, and an unset one skips that reader.
+fn contemporary_decoder(major: u8, minor: u8) -> Option<(String, std::path::PathBuf)> {
+    let release = match (major, minor) {
+        (1, 1) => "0.9.1",
+        (1, 2) => "0.10.0",
+        (2, 0) => "1.0.0",
+        (2, 1) => "1.1.0",
+        (2, 2) => "1.3.0",
+        _ => return None,
+    };
+    let env_var = format!("DRACO_LEGACY_DECODER_{}", release.replace('.', "_"));
+    match std::env::var_os(&env_var) {
+        Some(path) => Some((format!("Draco {release}"), std::path::PathBuf::from(path))),
+        None => {
+            eprintln!("bitstream {major}.{minor}: {env_var} is not set, so Draco {release} does not read it");
+            None
+        }
+    }
+}
+
 /// C++ Draco reads back the legacy streams this crate writes.
 ///
 /// The round-trip matrix in `version_roundtrip_test` proves the encoder and
@@ -789,10 +816,11 @@ fn annulus_mesh(n: usize) -> (Mesh, Vec<[f32; 3]>) {
 /// The speeds are here for the second one, and the holes for the first. 1.2 is
 /// beside 1.1 so a failure names the boundary rather than the feature.
 ///
-/// Setting `DRACO_CPP_DECODER` to a Draco 0.9.1 build adds the one reader
-/// contemporary with bitstream 1.1, which is the only thing that can see the
-/// rANS probability-table difference; a modern decoder accepts both forms. The
-/// format rule itself is pinned in CI by
+/// Setting `DRACO_LEGACY_DECODER_0_9_1` and `DRACO_LEGACY_DECODER_0_10_0` adds
+/// the readers contemporary with bitstreams 1.1 and 1.2 (see
+/// `contemporary_decoder`). Only 0.9.1 can see the rANS probability-table
+/// difference; a modern decoder accepts both forms. The format rule itself is
+/// pinned in CI by
 /// `rans_symbol_encoder::tests::the_zero_run_token_is_written_only_from_1_2`.
 #[test]
 #[cfg(feature = "legacy_bitstream_encode")]
@@ -828,12 +856,17 @@ fn cpp_decodes_the_legacy_streams_this_crate_writes() {
             let ply_path = tmp.join(format!("{name}.ply"));
             fs::write(&drc_path, encoded.data()).expect("write Rust DRC");
 
-            let decoded = run_cpp_decoder(&decoder_exe, &drc_path, &ply_path, &name);
-            assert_eq!(
-                decoded.num_faces, expected_face_count,
-                "{name}: C++ decoded a different number of faces"
-            );
-            assert_position_sets_match(&expected_positions, &decoded.positions, &name);
+            let mut readers = vec![(String::from("C++"), decoder_exe.clone())];
+            readers.extend(contemporary_decoder(major, minor));
+            for (reader, exe) in readers {
+                let name = format!("{name} read by {reader}");
+                let decoded = run_cpp_decoder(&exe, &drc_path, &ply_path, &name);
+                assert_eq!(
+                    decoded.num_faces, expected_face_count,
+                    "{name}: C++ decoded a different number of faces"
+                );
+                assert_position_sets_match(&expected_positions, &decoded.positions, &name);
+            }
         }
     }
 }
@@ -1002,21 +1035,6 @@ fn cpp_decodes_legacy_normal_and_tex_coord_encodings() {
             let obj_path = tmp.join(format!("{name}.obj"));
             fs::write(&drc_path, encoded.data()).expect("write Rust DRC");
 
-            let output = Command::new(&decoder_exe)
-                .arg("-i")
-                .arg(&drc_path)
-                .arg("-o")
-                .arg(&obj_path)
-                .output()
-                .expect("run C++ Draco decoder");
-            assert!(
-                output.status.success(),
-                "{name}: C++ decoder failed\nstdout:\n{}\nstderr:\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            let obj = parse_obj(&fs::read_to_string(&obj_path).expect("read C++ decoded OBJ"));
-
             // Rust decoding its own stream first localizes a failure to one
             // side. This is how the bitstream-1.2 case here was found to be a
             // decoder bug rather than a test artifact: below 2.0 this crate's
@@ -1063,30 +1081,49 @@ fn cpp_decodes_legacy_normal_and_tex_coord_encodings() {
                 &format!("{name} Rust self-decode normals"),
             );
 
-            assert_eq!(
-                obj.faces.len(),
-                expected_face_count,
-                "{name}: C++ decoded OBJ face count mismatch"
-            );
             let expected_positions: Vec<[f32; 3]> =
                 expected.iter().map(|vertex| vertex.position).collect();
             let expected_normals: Vec<[f32; 3]> =
                 expected.iter().map(|vertex| vertex.normal).collect();
             let expected_tex_coords: Vec<[f32; 2]> =
                 expected.iter().map(|vertex| vertex.tex_coord).collect();
-            assert_position_sets_match(&expected_positions, &obj.positions, &name);
-            assert_vec3_sets_match(
-                &expected_normals,
-                &obj.normals,
-                NORMAL_TOLERANCE,
-                &format!("{name} normals"),
-            );
-            assert_vec2_sets_match(
-                &expected_tex_coords,
-                &obj.tex_coords,
-                TEX_COORD_TOLERANCE,
-                &format!("{name} tex coords"),
-            );
+            let mut readers = vec![(String::from("C++"), decoder_exe.clone())];
+            readers.extend(contemporary_decoder(major, minor));
+            for (reader, exe) in readers {
+                let name = format!("{name} read by {reader}");
+                let output = Command::new(&exe)
+                    .arg("-i")
+                    .arg(&drc_path)
+                    .arg("-o")
+                    .arg(&obj_path)
+                    .output()
+                    .expect("run C++ Draco decoder");
+                assert!(
+                    output.status.success(),
+                    "{name}: C++ decoder failed\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let obj = parse_obj(&fs::read_to_string(&obj_path).expect("read C++ decoded OBJ"));
+                assert_eq!(
+                    obj.faces.len(),
+                    expected_face_count,
+                    "{name}: C++ decoded OBJ face count mismatch"
+                );
+                assert_position_sets_match(&expected_positions, &obj.positions, &name);
+                assert_vec3_sets_match(
+                    &expected_normals,
+                    &obj.normals,
+                    NORMAL_TOLERANCE,
+                    &format!("{name} normals"),
+                );
+                assert_vec2_sets_match(
+                    &expected_tex_coords,
+                    &obj.tex_coords,
+                    TEX_COORD_TOLERANCE,
+                    &format!("{name} tex coords"),
+                );
+            }
         }
     }
 }
