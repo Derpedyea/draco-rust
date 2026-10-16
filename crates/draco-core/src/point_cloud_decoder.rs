@@ -441,6 +441,7 @@ impl PointCloudDecoder {
                 unique_id: u32,
             }
 
+            let mut declared_attributes = 0usize;
             for _ in 0..num_attributes_decoders {
                 let num_attributes_in_decoder: usize = if bitstream_version < 0x0200 {
                     buffer.decode_u32()? as usize
@@ -456,6 +457,8 @@ impl PointCloudDecoder {
                     num_attributes_in_decoder,
                     buffer.remaining_size(),
                 )?;
+                declared_attributes = declared_attributes.saturating_add(num_attributes_in_decoder);
+                buffer.check_attributes(declared_attributes)?;
 
                 let mut attribute_specs: Vec<AttributeSpec> =
                     Vec::with_capacity(num_attributes_in_decoder);

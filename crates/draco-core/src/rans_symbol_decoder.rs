@@ -115,6 +115,10 @@ pub struct RAnsSymbolDecoder<'a> {
     l_rans_base: u32,
 }
 
+/// Most entries a valid probability table has: one per value of an 18-bit
+/// raw symbol, the longest raw coding takes.
+const MAX_SYMBOLS: usize = 1 << 18;
+
 impl<'a> RAnsSymbolDecoder<'a> {
     pub fn new(rans_precision_bits: u32) -> Self {
         let rans_precision = 1u32 << rans_precision_bits;
@@ -176,6 +180,16 @@ impl<'a> RAnsSymbolDecoder<'a> {
         // resizing instead of allocating gigabytes for a malformed varint. This
         // is a relative input-consistency check on a cold path, not a fixed cap.
         if num_symbols > buffer.remaining_size().saturating_mul(64) {
+            return false;
+        }
+        // That bound still grows with the input: 64 entries a byte, sized
+        // below before any of them is read, let a few megabytes reserve
+        // gigabytes. An encoder's alphabet is bounded too. Raw symbols are
+        // coded only below `2^18` (`start_raw_symbols` refuses longer ones,
+        // and both this crate's encoder and C++ Draco's switch to tagged
+        // coding past it), so a table has at most `2^18` entries; a tagged
+        // stream's table holds bit lengths, at most 33.
+        if num_symbols > MAX_SYMBOLS {
             return false;
         }
 
@@ -945,6 +959,51 @@ mod tests {
                 "{label}: the second stream"
             );
         }
+    }
+
+    /// A table of `num_symbols` entries at 20 bits of precision: the first
+    /// takes every slot, the rest are zero runs of up to 64.
+    fn one_symbol_table(num_symbols: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut n = num_symbols as u64;
+        while n >= 0x80 {
+            bytes.push((n as u8 & 0x7F) | 0x80);
+            n >>= 7;
+        }
+        bytes.push(n as u8);
+        // Two extra bytes: probability 2^20 is 0 in the low six bits,
+        // 2^20 >> 6 = 2^14 over the next sixteen.
+        bytes.extend([2, 0, 0x40]);
+        let mut zeros = num_symbols - 1;
+        while zeros > 0 {
+            let run = zeros.min(64);
+            bytes.push((((run - 1) as u8) << 2) | 3);
+            zeros -= run;
+        }
+        bytes
+    }
+
+    /// A valid table holds at most `MAX_SYMBOLS` entries, one per 18-bit raw
+    /// symbol. Past that, the count is refused before the table is sized from
+    /// it, though the input holds enough bytes to back it.
+    #[test]
+    fn tables_past_the_largest_alphabet_are_refused_before_sizing() {
+        use super::MAX_SYMBOLS;
+        use crate::decoder_buffer::DecoderBuffer;
+
+        let largest = one_symbol_table(MAX_SYMBOLS);
+        let mut buffer = DecoderBuffer::new(&largest);
+        buffer.set_version(2, 2);
+        let mut decoder = RAnsSymbolDecoder::new(20);
+        assert!(decoder.create(&mut buffer));
+        assert_eq!(decoder.num_symbols(), MAX_SYMBOLS);
+
+        let past = one_symbol_table(MAX_SYMBOLS + 1);
+        let mut buffer = DecoderBuffer::new(&past);
+        buffer.set_version(2, 2);
+        let mut decoder = RAnsSymbolDecoder::new(20);
+        assert!(!decoder.create(&mut buffer));
+        assert_eq!(decoder.probability_table.capacity(), 0);
     }
 
     #[test]

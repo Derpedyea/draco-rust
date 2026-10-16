@@ -84,6 +84,12 @@ impl KdTreeAttributesDecoder {
                 in_buffer.remaining_size()
             )));
         }
+        // Counted with the decoders before this one, which added theirs.
+        in_buffer.check_attributes(
+            usize::try_from(point_cloud.num_attributes())
+                .unwrap_or(0)
+                .saturating_add(num_attributes),
+        )?;
 
         for index in 0..num_attributes {
             let att_type_val = in_buffer.decode_u8().map_err(|_| {

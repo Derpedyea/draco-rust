@@ -60,6 +60,18 @@ pub struct DecodeLimits {
     /// primitive, because it carried tangents and five texture-coordinate sets
     /// against a position and a normal.
     pub max_decoded_bytes: u64,
+    /// Largest accepted number of attributes a stream declares, over all its
+    /// attribute decoders.
+    ///
+    /// Each declared attribute costs a [`PointAttribute`] and its decoder's
+    /// state before any of its values arrive, and a header is a few bytes, so
+    /// [`Self::max_decoded_bytes`] alone doesn't bound them: over a handful of
+    /// decoded points, a one-byte attribute charges almost nothing there.
+    /// Checked against each decoder's declared count, before anything is
+    /// reserved for it.
+    ///
+    /// [`PointAttribute`]: crate::geometry_attribute::PointAttribute
+    pub max_attributes: u64,
 }
 
 impl Default for DecodeLimits {
@@ -74,6 +86,8 @@ impl Default for DecodeLimits {
             max_points: 256_000_000,
             max_faces: 512_000_000,
             max_decoded_bytes: 2 << 30,
+            // Real assets declare tens; an attribute decoder count is a byte.
+            max_attributes: 1 << 16,
         }
     }
 }
@@ -89,6 +103,7 @@ impl DecodeLimits {
             max_points: u64::MAX,
             max_faces: u64::MAX,
             max_decoded_bytes: u64::MAX,
+            max_attributes: u64::MAX,
         }
     }
 
@@ -99,6 +114,7 @@ impl DecodeLimits {
             max_points: 1 << 20,
             max_faces: 1 << 20,
             max_decoded_bytes: 64 << 20,
+            max_attributes: 256,
         }
     }
 
@@ -112,6 +128,11 @@ impl DecodeLimits {
     #[cfg(feature = "decoder")]
     pub(crate) fn check_faces(self, faces: u64) -> Status {
         Self::check("faces", faces, self.max_faces)
+    }
+
+    #[cfg(feature = "decoder")]
+    pub(crate) fn check_attributes(self, attributes: u64) -> Status {
+        Self::check("attributes", attributes, self.max_attributes)
     }
 
     #[cfg(feature = "decoder")]
@@ -151,6 +172,11 @@ impl DecodeLimits {
         with_max_decoded_bytes,
         max_decoded_bytes,
         "Sets [`Self::max_decoded_bytes`]."
+    );
+    limit_setter!(
+        with_max_attributes,
+        max_attributes,
+        "Sets [`Self::max_attributes`]."
     );
 }
 
@@ -258,6 +284,41 @@ mod wiring {
             .expect_err("over the ceiling");
         assert_eq!(error.kind(), ErrorKind::LimitExceeded);
         assert!(error.message().contains("points"), "{error}");
+    }
+
+    /// A point cloud with `n` one-byte attributes over three points.
+    fn a_stream_of_attributes(n: usize) -> Vec<u8> {
+        let mut point_cloud = PointCloud::new();
+        point_cloud.set_num_points(3);
+        for _ in 0..n {
+            let mut attribute = PointAttribute::new();
+            attribute.init(GeometryAttributeType::Generic, 1, DataType::Uint8, false, 3);
+            attribute.buffer_mut().write(0, &[1, 2, 3]);
+            point_cloud.add_attribute(attribute);
+        }
+        let mut encoded = EncoderBuffer::new();
+        let mut encoder = PointCloudEncoder::new();
+        encoder.set_point_cloud(point_cloud);
+        encoder
+            .encode(&EncoderOptions::new(), &mut encoded)
+            .expect("encode");
+        encoded.data().to_vec()
+    }
+
+    /// Attribute headers are counted before anything is reserved for them:
+    /// three over a ceiling of two is refused, and exactly three decode.
+    #[test]
+    fn an_attribute_ceiling_below_the_header_refuses_it() {
+        let stream = a_stream_of_attributes(3);
+        let error = decode_under(DecodeLimits::default().with_max_attributes(2), &stream)
+            .expect_err("over the ceiling");
+        assert_eq!(error.kind(), ErrorKind::LimitExceeded, "{error}");
+        assert!(error.message().contains("attributes"), "{error}");
+        assert_eq!(
+            decode_under(DecodeLimits::default().with_max_attributes(3), &stream)
+                .expect("exactly the count fits"),
+            3
+        );
     }
 
     /// The byte ceiling is the one that bounds memory, and it is charged from

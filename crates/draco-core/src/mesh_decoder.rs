@@ -815,6 +815,7 @@ impl MeshDecoder {
         let mut att_ids_by_decoder: Vec<Vec<i32>> = Vec::with_capacity(num_attributes_decoders);
         let mut decoder_types_by_decoder: Vec<Vec<u8>> =
             Vec::with_capacity(num_attributes_decoders);
+        let mut declared_attributes = 0usize;
 
         for _ in 0..num_attributes_decoders {
             let num_attributes_in_decoder: usize = if bitstream_version < 0x0200 {
@@ -831,6 +832,8 @@ impl MeshDecoder {
                 ));
             }
             validate_num_attributes_in_decoder(num_attributes_in_decoder, buffer.remaining_size())?;
+            declared_attributes = declared_attributes.saturating_add(num_attributes_in_decoder);
+            buffer.check_attributes(declared_attributes)?;
 
             let mut att_ids: Vec<i32> = Vec::with_capacity(num_attributes_in_decoder);
             let mut decoder_types: Vec<u8> = Vec::with_capacity(num_attributes_in_decoder);

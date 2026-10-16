@@ -221,6 +221,11 @@ impl<'a> DecoderBuffer<'a> {
         self.limits.check_faces(faces as u64)
     }
 
+    /// Refuses a declared attribute count over the caller's ceiling.
+    pub(crate) fn check_attributes(&self, attributes: usize) -> crate::status::Status {
+        self.limits.check_attributes(attributes as u64)
+    }
+
     /// Adds one attribute's declared size to this decode's running total and
     /// refuses when the total passes the caller's ceiling.
     ///
