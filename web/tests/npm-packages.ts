@@ -142,6 +142,50 @@ for (const [name, parse, create, file, faces] of formats) {
   const again = module[parse](output);
   assert.ok(again.success, name + ' ' + file + ' reread: ' + again.error);
   assert.equal(again.meshes[0].positions.length, mesh.positions.length, name + ' ' + file + ' round trip');
+
+  // The package's pool gives a worker's answer, the same as the call here.
+  const { createPool } = await import('@draco-rust/' + name + '/pool');
+  const pool = createPool({ workers: 2 });
+  const [parsedThere, writtenThere] = await Promise.all([pool.parse(await fixture(file)), pool.create(mesh, {})]);
+  assert.deepEqual(parsedThere, first, name + ' ' + file + ': pool parse');
+  assert.deepEqual(writtenThere, written, name + ' ' + file + ': pool create');
+  pool.dispose();
+}
+
+// The other pools: FBX both ways, the encoder, and glTF read whole on a worker.
+{
+  const fbxPool = (await import('@draco-rust/fbx/pool')).createPool({ workers: 1 });
+  const writtenThere = await fbxPool.create([quad], {});
+  assert.deepEqual(writtenThere, written, 'fbx pool create');
+  assert.deepEqual(await fbxPool.parse(written.binary_data), read, 'fbx pool parse');
+  const controller = new AbortController();
+  const abandoned = fbxPool.parse(written.binary_data, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(abandoned, { name: 'AbortError' });
+  fbxPool.dispose();
+
+  const encoderPool = (await import('@draco-rust/encoder/pool')).createPool({ workers: 1 });
+  const encodedThere = await encoderPool.encode(quad, { position_bits: 14 });
+  assert.deepEqual(encodedThere, encoded, 'encoder pool');
+  encoderPool.dispose();
+
+  for (const spec of ['@draco-rust/gltf', '@draco-rust/gltf/validate', '@draco-rust/gltf/writer']) {
+    const { GltfAsset } = await load(spec);
+    const gltfPool = (await import(spec + '/pool')).createPool({ workers: 1 });
+    const there = await gltfPool.read(glb);
+    const asset = new GltfAsset(glb, '2.0');
+    assert.deepEqual(there.json, asset.json(), spec + ' pool json');
+    assert.equal(there.meshes.length, asset.meshCount());
+    const geometry = asset.readPrimitive(0, 0);
+    const [primitive] = there.meshes[0];
+    assert.equal(primitive.attributes.length, geometry.attributeCount());
+    primitive.attributes.forEach((attribute, i) => {
+      assert.equal(attribute.semantic, geometry.attributeSemantic(i));
+      assert.deepEqual(attribute.bytes, geometry.attributeBytes(i), spec + ' ' + attribute.semantic);
+    });
+    assert.deepEqual(primitive.index.bytes, geometry.indexBytes(), spec + ' pool index');
+    gltfPool.dispose();
+  }
 }
 // Each decoder entry's pool decodes on worker threads what the entry decodes
 // here, byte for byte, with several streams in flight at once.
@@ -253,7 +297,7 @@ const failed = await new Promise((resolve) => loader.decodeDracoFile(new ArrayBu
 assert.ok(failed instanceof Error, 'a stream that does not decode reaches onError');
 loader.dispose();
 
-console.log('npm-packages: OK (4 decoder entries with their pools, three.js adapter, encoder, 3 glTF entries, FBX, OBJ, PLY, STL)');
+console.log('npm-packages: OK (4 decoder entries, three.js adapter, encoder, 3 glTF entries, FBX, OBJ, PLY, STL, each with its worker pool)');
 `);
   process.stdout.write(execFileSync(process.execPath, ['consumer.mjs'], { cwd: project }).toString());
 } finally {

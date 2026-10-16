@@ -8,6 +8,16 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+- **Every package runs on workers.** `@draco-rust/obj`, `ply`, `stl`, `fbx`,
+  `encoder` and `gltf` each gain a `./pool` entry (and `gltf` a `pool` for
+  `./validate` and `./writer`), the decoder's pool made common: the wasm is
+  compiled once and handed to every worker, tasks go to the least loaded one,
+  results come back by transfer, and a task takes an `AbortSignal`. The format
+  pools `parse` and `create` as their functions do, the encoder's `encode`s,
+  and glTF's `read` takes a whole file on a worker and returns its JSON and
+  every primitive's geometry as plain arrays, since a `GltfAsset` cannot cross
+  threads.
+
 - **`@draco-rust/decoder` can send a smaller index, and a pool decode can be
   abandoned.** `decode_draco(data, attributes, { index: "auto" })` returns a
   `Uint16Array` index wherever the points number at most 65536, half the bytes

@@ -7,7 +7,8 @@
 //! next to copies of them in `web/npm/dist/<package>/`, ready for `npm pack` or
 //! `npm publish`. Hand-written modules that go with every entry, which import
 //! the entry as `./index.js`, are tracked in `web/npm/<package>/entry/` and
-//! copied next to each.
+//! copied next to each, after the worker pool every package shares from
+//! `web/npm/shared/`.
 
 use std::env;
 use std::ffi::OsString;
@@ -203,7 +204,8 @@ pub(crate) fn build_packages(config: &Config, only: &[String]) -> Result<(), Str
             ),
         )?;
         copy(&license, &dist.join("LICENSE"))?;
-        let shared = shared_files(&template.join("entry"))?;
+        let mut shared = shared_files(&npm_dir.join("shared"))?;
+        shared.extend(shared_files(&template.join("entry"))?);
 
         for entry in package.entries {
             let target = match entry.path.strip_prefix("./") {

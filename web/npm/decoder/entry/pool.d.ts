@@ -1,34 +1,11 @@
 import type { DracoAttributeRequest, DracoDecodeOptions, DracoDecodeResult } from './index.js';
+import type { Pool, PoolOptions, TaskOptions } from './pool-core.js';
 
-export interface DecoderPoolOptions {
-  /**
-   * How many workers to run at most; they start as work arrives. Defaults to
-   * one less than the cores, between one and four. `0` decodes on the calling
-   * thread, as does an environment without workers.
-   */
-  workers?: number;
-  /**
-   * The entry's wasm, when it is not next to this module where the pool looks
-   * for it: a URL, a `Response`, the bytes, or a compiled module.
-   */
-  wasm?: string | URL | Response | BufferSource | WebAssembly.Module;
-}
+export type DecoderPoolOptions = PoolOptions;
 
-export interface DecodeOptions extends DracoDecodeOptions {
-  /**
-   * Hand the stream's buffer to the worker instead of copying it, leaving it
-   * detached here. For a buffer nothing else reads afterwards.
-   */
-  transfer?: boolean;
-  /**
-   * Abandons the decode: the promise rejects with the signal's reason at once.
-   * A decode a worker has already started still runs to its end, and its
-   * result is dropped; one not yet sent is never sent.
-   */
-  signal?: AbortSignal;
-}
+export interface DecodeOptions extends DracoDecodeOptions, TaskOptions {}
 
-export interface DecoderPool {
+export interface DecoderPool extends Pool {
   /**
    * `decode_draco` on a worker. A stream that does not decode resolves with
    * `success: false`, as `decode_draco` returns it; a worker that fails rejects
@@ -39,13 +16,7 @@ export interface DecoderPool {
     attributes?: DracoAttributeRequest[],
     options?: DecodeOptions,
   ): Promise<DracoDecodeResult>;
-  /** Compiles the wasm and starts one worker ahead of the first decode. */
-  preload(): Promise<void>;
-  /** Changes the worker limit; idle workers past it stop now, busy ones when done. */
-  setWorkerLimit(workers: number): void;
-  readonly workerLimit: number;
-  /** Stops every worker and rejects what they held. */
-  dispose(): void;
 }
 
 export function createDecoderPool(options?: DecoderPoolOptions): DecoderPool;
+export { createDecoderPool as createPool };

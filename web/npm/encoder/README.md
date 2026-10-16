@@ -31,6 +31,27 @@ point cloud. Two options act on point clouds only:
 Both write smaller files, at the cost of output no longer byte-identical to
 Google's encoder.
 
+## On workers
+
+`@draco-rust/encoder/pool` encodes on workers, so a large mesh does not block
+the calling thread:
+
+```js
+import { createPool } from "@draco-rust/encoder/pool";
+
+const pool = createPool({ workers: 2 });
+const result = await pool.encode(mesh, { position_bits: 14 }); // what create_drc returns
+pool.dispose();
+```
+
+The workers start as work arrives, and the wasm is compiled once for all of
+them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;
+`{ signal }` takes an `AbortSignal`, which rejects the promise at once. A task
+a worker has started still runs to its end and its result is dropped. With
+`workers: 0`, or where there are no workers, the pool runs on the calling
+thread. It works on Web Workers, Node's worker threads (Node 20.16 and later)
+and from a CDN, as the decoder's does.
+
 For loading from a CDN or in Node, see the
 [decoder's README](https://www.npmjs.com/package/@draco-rust/decoder); the same
 `init` options apply, with `@draco-rust/encoder/index_bg.wasm` as the file.

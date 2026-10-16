@@ -38,6 +38,14 @@
       "types": "./writer/index.d.ts",
       "default": "./writer/index.js"
     },
+    "./pool": {
+      "types": "./pool.d.ts",
+      "default": "./pool.js"
+    },
+    "./*/pool": {
+      "types": "./*/pool.d.ts",
+      "default": "./*/pool.js"
+    },
     "./*.wasm": "./*.wasm",
     "./package.json": "./package.json"
   },

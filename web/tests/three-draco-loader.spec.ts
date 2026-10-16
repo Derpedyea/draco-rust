@@ -52,7 +52,9 @@ const files: Record<string, string> = {
   'decoder/index.js': path.join(web, 'www', 'pkg', 'drc.js'),
   'decoder/index_bg.wasm': path.join(web, 'www', 'pkg', 'drc_bg.wasm'),
   'decoder/pool.js': path.join(web, 'npm', 'decoder', 'entry', 'pool.js'),
-  'decoder/worker.js': path.join(web, 'npm', 'decoder', 'entry', 'worker.js'),
+  'decoder/worker.js': path.join(web, 'npm', 'shared', 'worker.js'),
+  'decoder/pool-core.js': path.join(web, 'npm', 'shared', 'pool-core.js'),
+  'decoder/tasks.js': path.join(web, 'npm', 'decoder', 'entry', 'tasks.js'),
   'decoder/three.js': path.join(web, 'npm', 'decoder', 'entry', 'three.js'),
 };
 const page = `<!doctype html><meta charset="utf-8">

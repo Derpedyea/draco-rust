@@ -39,6 +39,34 @@ For a `.gltf` with external files, pass the files by URI:
 form `KHR_animation_pointer` uses, as JSON bytes, or `undefined` when nothing
 is there.
 
+## On workers
+
+`GltfAsset` and the geometry it reads are wasm objects, which stay on the
+thread that made them. The pool reads a whole file on a worker instead and
+returns plain arrays: the document's JSON and every primitive of every mesh,
+Draco-compressed or not, decoded.
+
+```js
+import { createPool } from "@draco-rust/gltf/pool"; // or /validate/pool, /writer/pool
+
+const pool = createPool();
+const { json, meshes } = await pool.read(glbBytes);
+// meshes[m][p] = { mode, attributes: [{ semantic, count, components, componentType, normalized, bytes }], index }
+const summary = await pool.inspect(glbBytes); // what inspect_gltf returns
+pool.dispose();
+```
+
+A `.gltf` with external files takes them as `pool.read(jsonBytes, { resources })`,
+the way `GltfAsset.withResources` does, and `profile` picks `"2.0"` or `"2.1"`.
+
+The workers start as work arrives, and the wasm is compiled once for all of
+them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;
+`{ signal }` takes an `AbortSignal`, which rejects the promise at once. A task
+a worker has started still runs to its end and its result is dropped. With
+`workers: 0`, or where there are no workers, the pool runs on the calling
+thread. It works on Web Workers, Node's worker threads (Node 20.16 and later)
+and from a CDN, as the decoder's does.
+
 For loading from a CDN or in Node, see the
 [decoder's README](https://www.npmjs.com/package/@draco-rust/decoder); the same
 `init` options apply, with this package's `index_bg.wasm` files.
