@@ -100,16 +100,16 @@ function maxBoundsDrift(expected: any, actual: any): { error: number; mesh: stri
 
 const fbx = await loadWasm('fbx');
 for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
-    const source = fbx.parse_fbx(await readBytes(path));
+    const source = fbx.read_fbx(await readBytes(path));
     assert.equal(source.success, true, `${label} source parse`);
     assert.equal(source.scene.animations.length, 1, `${label} source clip selection`);
     const duration = source.scene.animations[0].duration;
-    const output = fbx.create_fbx_scene(source.scene, { version: 7500 });
+    const output = fbx.write_fbx_scene(source.scene, { version: 7500 });
     assert.equal(output.success, true, `${label} typed semantic write`);
     const temp = await mkdtemp(resolve(tmpdir(), 'draco-fbx-source-provenance-'));
     try {
         const outputPath = resolve(temp, `${label}.fbx`);
-        await writeFile(outputPath, Buffer.from(output.binary_data));
+        await writeFile(outputPath, Buffer.from(output.bytes));
         const times = [0, duration * 0.25, duration * 0.5, duration * 0.75, duration];
         const expected = blenderSamples(path, times);
         const actual = blenderSamples(outputPath, times);

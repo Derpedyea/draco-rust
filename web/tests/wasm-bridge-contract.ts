@@ -39,9 +39,9 @@ const plyOptions = {
 };
 
 /** The vertex rows of an ASCII PLY, which is where colours land. */
-function plyVertexRows(result: { success: boolean; data?: string; error?: string }) {
+function plyVertexRows(result: { success: boolean; text?: string; error?: string }) {
   assert.ok(result.success, `expected a PLY, got: ${result.error}`);
-  return result.data!.split('end_header\n')[1].trim().split('\n');
+  return result.text!.split('end_header\n')[1].trim().split('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ function plyVertexRows(result: { success: boolean; data?: string; error?: string
 // Bytes are the domain the writers hold colours in, and the one every reader
 // hands them over in.
 {
-  const rows = plyVertexRows(ply.create_ply({
+  const rows = plyVertexRows(ply.write_ply({
     name: 't',
     positions,
     indices,
@@ -63,7 +63,7 @@ function plyVertexRows(result: { success: boolean; data?: string; error?: string
 
 // A plain array carries the same bytes: `flattenSceneDocument` produces one.
 {
-  const rows = plyVertexRows(ply.create_ply({
+  const rows = plyVertexRows(ply.write_ply({
     name: 't',
     positions,
     indices,
@@ -77,8 +77,8 @@ function plyVertexRows(result: { success: boolean; data?: string; error?: string
 // successful export. Refused by type, because once the values are in, nothing
 // on the Rust side can tell 0..1 from 0..255.
 for (const [name, module, create, options] of [
-  ['ply', ply, 'create_ply', plyOptions],
-  ['drc', drc, 'create_drc', { include_colors: true }],
+  ['ply', ply, 'write_ply', plyOptions],
+  ['drc', drc, 'encode_draco', { include_colors: true }],
 ] as const) {
   for (const floats of [
     new Float32Array([1, 1, 1, 1, 1, 0, 0, 1, 0.5, 0.5, 0.5, 1]),
@@ -92,7 +92,7 @@ for (const [name, module, create, options] of [
 
 // A byte value out of range is a caller bug rather than something to clamp.
 {
-  const result = ply.create_ply({
+  const result = ply.write_ply({
     name: 't', positions, indices, colors: [300, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255],
   }, plyOptions);
   assert.equal(result.success, false, 'a 300 byte was accepted');
@@ -112,10 +112,10 @@ for (const [label, bad, pattern] of [
   ['not a number', [0, 1, 'x'], /only numbers/],
 ] as const) {
   for (const [name, call] of [
-    ['ply', () => ply.create_ply({ name: 't', positions, indices: bad }, plyOptions)],
-    ['stl', () => stl.create_stl({ positions, indices: bad }, { format: 'binary' })],
-    ['obj', () => obj.create_obj({ name: 't', positions, indices: bad }, { precision: 6 })],
-    ['drc', () => drc.create_drc({ name: 't', positions, indices: bad }, {})],
+    ['ply', () => ply.write_ply({ name: 't', positions, indices: bad }, plyOptions)],
+    ['stl', () => stl.write_stl({ positions, indices: bad }, { format: 'binary' })],
+    ['obj', () => obj.write_obj({ name: 't', positions, indices: bad }, { precision: 6 })],
+    ['drc', () => drc.encode_draco({ name: 't', positions, indices: bad }, {})],
   ] as const) {
     const result = call() as { success: boolean; error?: string };
     assert.equal(result.success, false, `${name} accepted a ${label} index`);
@@ -126,7 +126,7 @@ for (const [label, bad, pattern] of [
 // FBX reads the same field signed, because the sign carries meaning there: a
 // negative entry closes a polygon and -1 in materialIndices means no material.
 {
-  const result = fbx.create_fbx([{
+  const result = fbx.write_fbx([{
     name: 't', positions, indices, materialIndices: [-1], polygonVertexIndices: [0, 1, -3],
   }], { version: 7500 });
   assert.ok(result.success, `FBX refused a legitimate negative: ${result.error}`);
@@ -143,11 +143,11 @@ for (const [label, channels] of [
   ['empty channels', { normals: [], uvs: [], colors: [] }],
   ['absent channels', {}],
 ] as const) {
-  const result = ply.create_ply({ name: 't', positions, indices, ...channels }, {
+  const result = ply.write_ply({ name: 't', positions, indices, ...channels }, {
     ...plyOptions, include_normals: true, include_uvs: true,
   });
   assert.ok(result.success, `${label}: ${result.error}`);
-  assert.doesNotMatch(result.data, /property float nx/, `${label} produced a normal element`);
+  assert.doesNotMatch(result.text, /property float nx/, `${label} produced a normal element`);
 }
 
 // A mesh with no index buffer still exports: `indices: []` is the shape
@@ -155,24 +155,24 @@ for (const [label, channels] of [
 // a vertex element and no face element at all, which is a point cloud rather
 // than an empty surface.
 {
-  const result = ply.create_ply({ name: 't', positions, indices: [] }, plyOptions);
+  const result = ply.write_ply({ name: 't', positions, indices: [] }, plyOptions);
   assert.ok(result.success, `non-indexed mesh: ${result.error}`);
-  assert.match(result.data, /element vertex 3/);
-  assert.doesNotMatch(result.data, /element face/);
+  assert.match(result.text, /element vertex 3/);
+  assert.doesNotMatch(result.text, /element face/);
 }
 
 // A missing required field is an error rather than an empty mesh.
 {
-  const result = ply.create_ply({ name: 't', positions }, plyOptions);
+  const result = ply.write_ply({ name: 't', positions }, plyOptions);
   assert.equal(result.success, false, 'a mesh with no indices field was accepted');
 }
 
 // `undefined` and `null` both read as absent, which is what `get_field` decides
 // and what every optional field downstream depends on.
 for (const missing of [undefined, null]) {
-  const result = ply.create_ply({ name: 't', positions, indices, colors: missing }, plyOptions);
+  const result = ply.write_ply({ name: 't', positions, indices, colors: missing }, plyOptions);
   assert.ok(result.success, `colors: ${missing} was rejected`);
-  assert.doesNotMatch(result.data, /property uchar red/);
+  assert.doesNotMatch(result.text, /property uchar red/);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,15 +181,15 @@ for (const missing of [undefined, null]) {
 
 {
   const source = 'v 0 0 0\nv 1 0 0\nv 1 1 0\nf 1 2 3\n';
-  const parsed = obj.parse_obj_bytes(new TextEncoder().encode(source));
-  assert.ok(parsed.success, `parse_obj_bytes: ${parsed.error}`);
+  const parsed = obj.read_obj(new TextEncoder().encode(source));
+  assert.ok(parsed.success, `read_obj: ${parsed.error}`);
   assert.equal(parsed.meshes[0].positions.length, 9);
   assert.ok(parsed.meshes[0].positions instanceof Float32Array, 'positions crossed as a plain array');
   assert.ok(parsed.meshes[0].indices instanceof Uint32Array, 'indices crossed as a plain array');
   // The string entry point is gone; bytes are the one way in.
   assert.equal(typeof (obj as any).parse_obj, 'undefined', 'parse_obj is still exported');
   // Invalid UTF-8 is reported rather than thrown across the boundary.
-  const broken = obj.parse_obj_bytes(new Uint8Array([0xff, 0xfe, 0x00]));
+  const broken = obj.read_obj(new Uint8Array([0xff, 0xfe, 0x00]));
   assert.equal(broken.success, false);
   assert.match(broken.error, /UTF-8/);
 }
@@ -202,11 +202,11 @@ for (const missing of [undefined, null]) {
 // so it has to cross as a plain array. A typed one would read as absent there
 // and drop every per-polygon material assignment without a word.
 {
-  const written = fbx.create_fbx([{
+  const written = fbx.write_fbx([{
     name: 't', positions, indices, materialIndices: [0],
   }], { version: 7500 });
   assert.ok(written.success, `fbx write: ${written.error}`);
-  const back = fbx.parse_fbx(written.binary_data);
+  const back = fbx.read_fbx(written.bytes);
   assert.ok(back.success, `fbx read: ${back.error}`);
   const mesh = back.scene.rootNodes[0].meshes[0];
   assert.ok(Array.isArray(mesh.materialIndices), 'materialIndices crossed as a typed array');

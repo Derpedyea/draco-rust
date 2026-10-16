@@ -7,11 +7,11 @@ const bytesOf = (data) =>
 export function createPool(options = {}) {
   const pool = createTaskPool(options);
   return {
-    parse: (data, { transfer = false, signal } = {}) => pool.run('parse_fbx', [bytesOf(data)], { transfer, signal }),
-    create: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
-      pool.run('create_fbx', [value, writeOptions], { transfer, signal }),
-    createScene: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
-      pool.run('create_fbx_scene', [value, writeOptions], { transfer, signal }),
+    read: (data, { transfer = false, signal } = {}) => pool.run('read_fbx', [bytesOf(data)], { transfer, signal }),
+    write: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
+      pool.run('write_fbx', [value, writeOptions], { transfer, signal }),
+    writeScene: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
+      pool.run('write_fbx_scene', [value, writeOptions], { transfer, signal }),
     preload: () => pool.preload(),
     setWorkerLimit: (workers) => pool.setWorkerLimit(workers),
     get workerLimit() {

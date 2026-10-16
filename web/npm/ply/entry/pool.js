@@ -7,9 +7,9 @@ const bytesOf = (data) =>
 export function createPool(options = {}) {
   const pool = createTaskPool(options);
   return {
-    parse: (data, { transfer = false, signal } = {}) => pool.run('parse_ply_bytes', [bytesOf(data)], { transfer, signal }),
-    create: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
-      pool.run('create_ply', [value, writeOptions], { transfer, signal }),
+    read: (data, { transfer = false, signal } = {}) => pool.run('read_ply', [bytesOf(data)], { transfer, signal }),
+    write: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
+      pool.run('write_ply', [value, writeOptions], { transfer, signal }),
     preload: () => pool.preload(),
     setWorkerLimit: (workers) => pool.setWorkerLimit(workers),
     get workerLimit() {

@@ -121,10 +121,10 @@ function close(actual: number[], expected: number[], label: string) {
 
 for (const space of ['meters-y-up', 'meters-z-up'] as FbxExportSpaceName[]) {
   const scene = buildFbxSceneFromDocument(source, { space });
-  const written = fbxModule.create_fbx_scene(scene, {});
+  const written = fbxModule.write_fbx_scene(scene, {});
   assert.ok(written.success, `${space}: ${written.error}`);
 
-  const parsed = fbxModule.parse_fbx(new Uint8Array(written.binary_data));
+  const parsed = fbxModule.read_fbx(new Uint8Array(written.bytes));
   assert.ok(parsed.success, `${space}: ${parsed.error}`);
   const document = buildSceneDocumentFromFbx(parsed);
 

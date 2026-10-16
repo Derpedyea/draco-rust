@@ -644,7 +644,7 @@ pub struct ExportOptions {
     pub spatial_point_order: Option<bool>,
 }
 
-/// Export result. `binary_data` is the payload; `.drc` has no text container.
+/// Export result. `binary_data` is the stream, which reaches JavaScript as `bytes`.
 #[cfg(feature = "write")]
 pub struct ExportResult {
     /// Whether the payload was encoded.
@@ -753,10 +753,13 @@ fn prediction_scheme_name(
     format!("{method} ({transform})")
 }
 
-/// Encode mesh data into a standalone Draco payload.
+/// Encodes a mesh or point cloud into a standalone Draco stream.
+///
+/// The result is `{ success, error, bytes, draco_stats }`, `bytes` the stream,
+/// as every writer in these packages returns its output.
 #[cfg(feature = "write")]
 #[wasm_bindgen]
-pub fn create_drc(mesh_js: JsValue, options_js: JsValue) -> JsValue {
+pub fn encode_draco(mesh_js: JsValue, options_js: JsValue) -> JsValue {
     let mesh = match mesh_input_from_js(&mesh_js) {
         Ok(mesh) => mesh,
         Err(error) => {
@@ -777,8 +780,8 @@ fn export_result_to_js(result: &ExportResult) -> JsValue {
     let obj = Object::new();
     set_bool(&obj, "success", result.success);
     match &result.binary_data {
-        Some(bytes) => set_js(&obj, "binary_data", &u8_array_to_js(bytes)),
-        None => set_js(&obj, "binary_data", &JsValue::UNDEFINED),
+        Some(bytes) => set_js(&obj, "bytes", &u8_array_to_js(bytes)),
+        None => set_js(&obj, "bytes", &JsValue::UNDEFINED),
     }
     set_opt_string(&obj, "error", &result.error);
     match &result.draco_stats {

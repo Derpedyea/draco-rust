@@ -42,9 +42,9 @@ const scene = {
   animations: [],
 };
 
-const written = fbx.create_fbx_scene(scene, { version: 7500 });
+const written = fbx.write_fbx_scene(scene, { version: 7500 });
 assert.ok(written.success, `write failed: ${written.error}`);
-const parsed = fbx.parse_fbx(new Uint8Array(written.binary_data));
+const parsed = fbx.read_fbx(new Uint8Array(written.bytes));
 assert.ok(parsed.success, `parse failed: ${parsed.error}`);
 
 // 1. The offset survives the round trip as authored components plus the

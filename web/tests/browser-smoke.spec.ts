@@ -2510,7 +2510,7 @@ test('a .drc keeps a second UV set and a generic attribute through the app', asy
   const source = await page.evaluate(async () => {
     const drc = await import('/pkg/drc.js' as string);
     await drc.default({ module_or_path: new URL('pkg/drc_bg.wasm', document.baseURI) });
-    const written = drc.create_drc({
+    const written = drc.encode_draco({
       positions: [0, 0, 0, 1, 0, 0, 0.5, 1, 0],
       indices: [0, 1, 2],
       uvs: [0, 0, 1, 0, 0.5, 1],
@@ -2533,7 +2533,7 @@ test('a .drc keeps a second UV set and a generic attribute through the app', asy
         },
       ],
     }, {});
-    return Array.from(written.binary_data as Uint8Array);
+    return Array.from(written.bytes as Uint8Array);
   });
 
   await page.locator('#file-input').setInputFiles({

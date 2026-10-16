@@ -6,7 +6,7 @@ import { loadWasm, mixamoFbx, readBytes, sambaFbx } from './fbx-test-utils.ts';
 
 const fbx = await loadWasm('fbx');
 for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
-    const parsed = fbx.parse_fbx(await readBytes(path));
+    const parsed = fbx.read_fbx(await readBytes(path));
     assert.equal(parsed.success, true, `${label} source parse`);
     const { document, provenance } = buildSceneDocumentWithFbxProvenance(parsed);
     assert.equal(document.nodes.length > 0, true, `${label} portable document`);

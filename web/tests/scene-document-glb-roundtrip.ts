@@ -393,7 +393,7 @@ assert.equal(
 );
 
 for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
-    const parsed = fbx.parse_fbx(await readBytes(path));
+    const parsed = fbx.read_fbx(await readBytes(path));
     if (!parsed.success || !parsed.scene) throw new Error(`${label} semantic FBX parse failed`);
     const portable = buildSceneDocumentFromFbx(parsed);
     const output = serializeSceneDocumentToGlb(portable, gltf);

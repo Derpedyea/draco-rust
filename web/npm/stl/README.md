@@ -11,15 +11,15 @@ exporters often write too. It is part of
 ## Usage
 
 ```js
-import init, { parse_stl_bytes, create_stl } from "@draco-rust/stl";
+import init, { read_stl, write_stl } from "@draco-rust/stl";
 
 await init();
-const result = parse_stl_bytes(stlBytes);
+const result = read_stl(stlBytes);
 if (!result.success) throw new Error(result.error);
 const { positions, indices, normals } = result.meshes[0];
 
-const written = create_stl({ positions, indices }, {});   // binary by default
-const stl = written.binary_data; // Uint8Array; with { format: "ascii" }, text in written.data
+const written = write_stl({ positions, indices }, {}); // binary by default
+const stl = written.bytes; // Uint8Array; with { format: "ascii" }, also written.text
 ```
 
 Meshes keep STL's own shape: three vertices per triangle, each with the facet
@@ -34,12 +34,10 @@ A large file blocks the calling thread while it is read or written.
 import { createPool } from "@draco-rust/stl/pool";
 
 const pool = createPool({ workers: 2 }); // default: cores - 1, at most 4
-const result = await pool.parse(bytes); // what parse_stl_bytes returns
-const written = await pool.create(mesh, {}); // what create_stl returns
+const result = await pool.read(bytes); // what read_stl returns
+const written = await pool.write(mesh, {}); // what write_stl returns
 pool.dispose();
 ```
-
-`parse` runs `parse_stl_bytes` and `create` runs `create_stl`.
 
 The workers start as work arrives, and the wasm is compiled once for all of
 them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;

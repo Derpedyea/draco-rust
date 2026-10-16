@@ -12,18 +12,18 @@ spherical harmonics. It is part of
 ## Usage
 
 ```js
-import init, { parse_ply_bytes, create_ply } from "@draco-rust/ply";
+import init, { read_ply, write_ply } from "@draco-rust/ply";
 
 await init();
-const result = parse_ply_bytes(plyBytes);
+const result = read_ply(plyBytes);
 if (!result.success) throw new Error(result.error);
 const { positions, indices, normals, colors, extras } = result.meshes[0];
 // indices is empty for a point cloud; extras holds the other properties
 ```
 
-`create_ply(mesh, { format })` writes one back: binary little-endian by
-default, as a `Uint8Array` in `binary_data`; `format: "binary_big_endian"`
-does the same, and `format: "ascii"` returns text in `data`.
+`write_ply(mesh, { format })` writes one back, as a `Uint8Array` in `bytes`:
+binary little-endian by default, or `format: "binary_big_endian"`, or
+`format: "ascii"`, which also comes back as `text`.
 
 ## On workers
 
@@ -34,12 +34,10 @@ A large file blocks the calling thread while it is read or written.
 import { createPool } from "@draco-rust/ply/pool";
 
 const pool = createPool({ workers: 2 }); // default: cores - 1, at most 4
-const result = await pool.parse(bytes); // what parse_ply_bytes returns
-const written = await pool.create(mesh, {}); // what create_ply returns
+const result = await pool.read(bytes); // what read_ply returns
+const written = await pool.write(mesh, {}); // what write_ply returns
 pool.dispose();
 ```
-
-`parse` runs `parse_ply_bytes` and `create` runs `create_ply`.
 
 The workers start as work arrives, and the wasm is compiled once for all of
 them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;

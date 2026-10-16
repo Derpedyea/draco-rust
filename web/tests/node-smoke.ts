@@ -129,18 +129,18 @@ const fbxScene = {
     }],
   }],
 };
-const fbxExport = fbx.create_fbx_scene(fbxScene, {});
-if (!fbxExport.success || !fbxExport.binary_data?.length) {
+const fbxExport = fbx.write_fbx_scene(fbxScene, {});
+if (!fbxExport.success || !fbxExport.bytes?.length) {
   throw new Error(`FBX scene export smoke failed: ${fbxExport.error}`);
 }
-const compressedFbxExport = fbx.create_fbx_scene(fbxScene, { compression: true });
+const compressedFbxExport = fbx.write_fbx_scene(fbxScene, { compression: true });
 if (
   !compressedFbxExport.success
   || !compressedFbxExport.fbx_stats?.requested
 ) {
   throw new Error(`FBX compression smoke failed: ${JSON.stringify(compressedFbxExport)}`);
 }
-const fbxRoundtrip = fbx.parse_fbx(fbxExport.binary_data);
+const fbxRoundtrip = fbx.read_fbx(fbxExport.bytes);
 if (
   !fbxRoundtrip.success
   || fbxRoundtrip.materials?.[1]?.name !== 'Blue'
@@ -180,11 +180,11 @@ if (
 ) {
   throw new Error('glTF to FBX scene conversion smoke failed');
 }
-const materialFbxRoundtrip = fbx.parse_fbx(
-  fbx.create_fbx_scene(materialFbxScene, {}).binary_data,
+const materialFbxRoundtrip = fbx.read_fbx(
+  fbx.write_fbx_scene(materialFbxScene, {}).bytes,
 );
-const animatedFbxRoundtrip = fbx.parse_fbx(
-  fbx.create_fbx_scene(animatedFbxScene, {}).binary_data,
+const animatedFbxRoundtrip = fbx.read_fbx(
+  fbx.write_fbx_scene(animatedFbxScene, {}).bytes,
 );
 if (
   materialFbxRoundtrip.materials?.[0]?.name !== 'Blue'

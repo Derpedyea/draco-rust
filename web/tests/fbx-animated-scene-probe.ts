@@ -7,7 +7,7 @@ import { loadFbxViewerAdapter, loadWasm, readBytes, sambaFbx, skipUnless, verbos
 if (skipUnless([sambaFbx], 'Samba Dancing FBX scene probe')) process.exit(0);
 const fbx = await loadWasm('fbx');
 const { buildSceneFromFbx } = await loadFbxViewerAdapter();
-const parsed = fbx.parse_fbx(await readBytes(sambaFbx));
+const parsed = fbx.read_fbx(await readBytes(sambaFbx));
 if (!parsed?.scene?.rootNodes?.length) throw new Error('Samba Dancing did not produce a semantic FBX scene');
 const kinds = new Set<string>();
 for (const stack = [...parsed.scene.rootNodes]; stack.length;) {

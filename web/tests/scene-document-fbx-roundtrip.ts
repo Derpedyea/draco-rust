@@ -18,7 +18,7 @@ const [fbx, gltf] = await Promise.all([loadWasm('fbx'), loadWasm('gltf')]);
 const allNodes = (nodes: any[]): any[] => nodes.flatMap((node) => [node, ...allNodes(node.children || [])]);
 
 for (const [label, path] of fbxFixtures ? [['Mixamo', mixamoFbx], ['Samba', sambaFbx]] : []) {
-    const parsed = fbx.parse_fbx(await readBytes(path));
+    const parsed = fbx.read_fbx(await readBytes(path));
     assert.equal(parsed.success, true, `${label} source parse`);
     const { document, provenance } = buildSceneDocumentWithFbxProvenance(parsed);
     const scene = buildFbxSceneFromDocument(document, { provenance });
@@ -27,9 +27,9 @@ for (const [label, path] of fbxFixtures ? [['Mixamo', mixamoFbx], ['Samba', samb
     assert.equal(scene.materials.length, document.materials.length, `${label} material count`);
     assert.equal(scene.animations.length, document.animations.length, `${label} clip count`);
     assert.ok(allNodes(scene.rootNodes).some((node) => node.meshes?.some((mesh: any) => mesh.skin)), `${label} skin payload`);
-    const written = fbx.create_fbx_scene(scene, { version: 7500 });
+    const written = fbx.write_fbx_scene(scene, { version: 7500 });
     assert.equal(written.success, true, `${label} typed FBX write: ${written.error || ''}`);
-    const reparsed = fbx.parse_fbx(new Uint8Array(written.binary_data));
+    const reparsed = fbx.read_fbx(new Uint8Array(written.bytes));
     assert.equal(reparsed.success, true, `${label} typed FBX reparse`);
     assert.equal(reparsed.scene.animations.length, parsed.scene.animations.length, `${label} clip roundtrip`);
     const sourceNames = allNodes(parsed.scene.rootNodes).map((node) => node.name).sort();
@@ -47,9 +47,9 @@ const foxScene = buildFbxSceneFromDocument(foxDocument);
 assert.equal(foxScene.rootNodes.length, foxDocument.rootNodes.length, 'Fox root count');
 assert.equal(foxScene.materials.length, foxDocument.materials.length, 'Fox materials');
 assert.equal(foxScene.animations.length, foxDocument.animations.length, 'Fox clips');
-const foxWritten = fbx.create_fbx_scene(foxScene, { version: 7500 });
+const foxWritten = fbx.write_fbx_scene(foxScene, { version: 7500 });
 assert.equal(foxWritten.success, true, `Fox typed FBX write: ${foxWritten.error || ''}`);
-const foxReparsed = fbx.parse_fbx(new Uint8Array(foxWritten.binary_data));
+const foxReparsed = fbx.read_fbx(new Uint8Array(foxWritten.bytes));
 assert.equal(foxReparsed.success, true, 'Fox typed FBX reparse');
 assert.ok(foxReparsed.scene.rootNodes.length > 0, 'Fox hierarchy survives');
 console.log(`PASS Fox SceneDocument -> typed FBX: ${foxDocument.nodes.length} nodes, ${foxDocument.animations.length} clips`);

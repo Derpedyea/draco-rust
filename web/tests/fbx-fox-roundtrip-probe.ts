@@ -24,9 +24,9 @@ const findWithTranslation = (nodes: any[]): any => {
 };
 const node = findWithTranslation(scene.rootNodes);
 if (!node?.matrix) throw new Error('Fox has no translated node matrix');
-const written = fbx.create_fbx_scene(scene, { version: 7500, legacyCompatibility: true });
+const written = fbx.write_fbx_scene(scene, { version: 7500, legacyCompatibility: true });
 if (!written.success) throw new Error(`Fox FBX write failed: ${written.error}`);
-const reparsed = fbx.parse_fbx(new Uint8Array(written.binary_data));
+const reparsed = fbx.read_fbx(new Uint8Array(written.bytes));
 const findByName = (nodes: any[], name: string): any => nodes.flatMap((candidate) => [candidate, ...findAll(candidate.children || [])]).find((candidate) => candidate.name === name);
 const findAll = (nodes: any[]): any[] => nodes.flatMap((candidate) => [candidate, ...findAll(candidate.children || [])]);
 const after = findByName(reparsed.scene?.rootNodes || [], node.name)?.matrix;
@@ -36,7 +36,7 @@ if (maxDiff >= 1e-3) throw new Error(`Fox matrix drift after round-trip: ${maxDi
 if (process.env.DRACO_WRITE_DEBUG_ARTIFACTS === '1') {
     const scratch = resolve(here, '..', '..', '.scratch');
     await mkdir(scratch, { recursive: true });
-    await writeFile(resolve(scratch, 'fox_export.fbx'), Buffer.from(written.binary_data));
+    await writeFile(resolve(scratch, 'fox_export.fbx'), Buffer.from(written.bytes));
 }
 verbose({ fixture: foxGltf, node: node.name, maxDiff });
 console.log(`PASS Fox FBX matrix round-trip: max diff=${maxDiff.toExponential(3)}`);

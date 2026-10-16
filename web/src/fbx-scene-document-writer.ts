@@ -4,7 +4,7 @@
  * This is the FBX export boundary: the document contract stays format-neutral,
  * while axis/unit conversion, Euler lowering, skin-cluster construction, and
  * optional source provenance are kept here. The returned object is consumed by
- * fbx-wasm.create_fbx_scene; no flattened mesh writer is involved.
+ * fbx-wasm.write_fbx_scene; no flattened mesh writer is involved.
  */
 
 import { DEFAULT_FBX_EXPORT_SPACE, FBX_EXPORT_SPACES, fbxSpace } from './fbx-space.ts';

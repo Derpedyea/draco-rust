@@ -10,19 +10,19 @@ coordinates, groups and material references. It is part of
 ## Usage
 
 ```js
-import init, { parse_obj_bytes, create_obj } from "@draco-rust/obj";
+import init, { read_obj, write_obj } from "@draco-rust/obj";
 
 await init();
-const result = parse_obj_bytes(objBytes);
+const result = read_obj(objBytes);
 if (!result.success) throw new Error(result.error);
 const { positions, indices, normals, uvs } = result.meshes[0];
 
-const written = create_obj({ positions, indices, normals, uvs }, {});
-const obj = written.data; // the OBJ text
+const written = write_obj({ positions, indices, normals, uvs }, {});
+const obj = written.text; // the OBJ text; written.bytes holds it as UTF-8
 ```
 
-Polygons are triangulated. `create_obj_multi` writes several meshes into one
-file.
+Polygons are triangulated. `write_obj` takes one mesh or an array of them, each
+written as an object of its own.
 
 ## On workers
 
@@ -33,13 +33,10 @@ A large file blocks the calling thread while it is read or written.
 import { createPool } from "@draco-rust/obj/pool";
 
 const pool = createPool({ workers: 2 }); // default: cores - 1, at most 4
-const result = await pool.parse(bytes); // what parse_obj_bytes returns
-const written = await pool.create(mesh, {}); // what create_obj returns
+const result = await pool.read(bytes); // what read_obj returns
+const written = await pool.write(meshes, {}); // what write_obj returns
 pool.dispose();
 ```
-
-`parse` runs `parse_obj_bytes`, `create` runs `create_obj`, and `createMulti`
-runs `create_obj_multi`.
 
 The workers start as work arrives, and the wasm is compiled once for all of
 them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;

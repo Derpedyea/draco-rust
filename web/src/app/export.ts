@@ -108,9 +108,8 @@ export async function exportFile() {
 
 /** The byte size of exactly what the download button hands to the browser. */
 function exportResultSize(result: ExportResult): number | undefined {
-  if (result.binary_data) return new Uint8Array(result.binary_data).byteLength;
-  if (result.json_data !== undefined) return new TextEncoder().encode(result.json_data).byteLength;
-  if (result.data !== undefined) return new TextEncoder().encode(result.data).byteLength;
+  if (result.text !== undefined) return new TextEncoder().encode(result.text).byteLength;
+  if (result.bytes) return new Uint8Array(result.bytes).byteLength;
   return undefined;
 }
 
@@ -127,12 +126,10 @@ export function downloadResult(result: ExportResult, format: string) {
   const extension = format === 'fbx-legacy' ? 'fbx' : format;
   let filename = `export.${extension}`;
 
-  if (result.binary_data) {
-    blob = new Blob([new Uint8Array(result.binary_data)], { type: 'application/octet-stream' });
-  } else if (result.json_data) {
-    blob = new Blob([result.json_data], { type: 'application/json' });
-  } else if (result.data) {
-    blob = new Blob([result.data], { type: 'text/plain' });
+  if (result.text !== undefined) {
+    blob = new Blob([result.text], { type: format === 'gltf' ? 'application/json' : 'text/plain' });
+  } else if (result.bytes) {
+    blob = new Blob([new Uint8Array(result.bytes)], { type: 'application/octet-stream' });
   } else {
     log('No data to download', 'error');
     return;

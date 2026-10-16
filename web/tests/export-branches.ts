@@ -171,7 +171,7 @@ const plain = exportSceneDocumentToGlb(triangle, { useDraco: false, encodingSpee
 assert.equal(plain.result.success, true);
 assert.equal(plain.result.draco_stats, null, 'an uncompressed export reports no compression');
 assert.equal(
-  glbManifest(plain.result.binary_data!).extensionsRequired,
+  glbManifest(plain.result.bytes!).extensionsRequired,
   undefined,
   'without the checkbox the GLB must not require Draco',
 );
@@ -181,7 +181,7 @@ if (typeof gltfModule.GltfAsset?.prototype?.compressPrimitive === 'function') {
   assert.equal(compressed.result.success, true);
   assert.deepEqual(compressed.warnings, [], 'a document this route wrote itself must compress cleanly');
   assert.ok(
-    (glbManifest(compressed.result.binary_data!).extensionsRequired ?? []).includes('KHR_draco_mesh_compression'),
+    (glbManifest(compressed.result.bytes!).extensionsRequired ?? []).includes('KHR_draco_mesh_compression'),
     'the checkbox must reach the writer, not just the settings object',
   );
   assert.equal(compressed.result.draco_stats!.primitives, 1);
@@ -347,7 +347,7 @@ if (typeof gltfModule.GltfAsset?.prototype?.compressPrimitive === 'function') {
     const routed = await runExport({
       format: 'glb', includeNormals: true, includeUvs: true, useDraco: false, encodingSpeed: 5, zUpToYUp,
     });
-    const position = glbManifest(routed.result.binary_data!).accessors
+    const position = glbManifest(routed.result.bytes!).accessors
       .find((accessor: any) => accessor.type === 'VEC3' && accessor.min);
     return { min: position.min, max: position.max };
   };
@@ -375,7 +375,7 @@ if (typeof gltfModule.GltfAsset?.prototype?.compressPrimitive === 'function') {
   const exported = await runExport({
     format: 'glb', includeNormals: true, includeUvs: true, useDraco: false, encodingSpeed: 5,
   });
-  const glb = new Uint8Array(exported.result.binary_data!);
+  const glb = new Uint8Array(exported.result.bytes!);
   const primitive = glbManifest(glb).meshes[0].primitives[0];
   assert.equal(primitive.mode, 0, 'a mesh with no faces is written as points');
   assert.equal(primitive.indices, undefined);

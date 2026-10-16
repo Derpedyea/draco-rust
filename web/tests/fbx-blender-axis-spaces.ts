@@ -168,7 +168,7 @@ try {
     const authored = runBlender(exportScript, 'export');
     const expectedIn = VERTICES.map(blenderToGltf);
     for (const [name, path] of Object.entries(authored) as [string, string][]) {
-        const parsed = fbx.parse_fbx(await readBytes(path));
+        const parsed = fbx.read_fbx(await readBytes(path));
         assert.equal(parsed.success, true, `${name}: ${parsed.error || ''}`);
         const settings = parsed.scene.globalSettings;
         assert.equal(settings.upAxis, name === 'yup' ? 1 : 2, `${name}: Blender declared its up axis`);
@@ -187,10 +187,10 @@ try {
     const written: Record<string, string> = {};
     for (const space of ['meters-y-up', 'meters-z-up'] as FbxExportSpaceName[]) {
         const scene = buildFbxSceneFromDocument(source, { space });
-        const output = fbx.create_fbx_scene(scene, { version: 7500 });
+        const output = fbx.write_fbx_scene(scene, { version: 7500 });
         assert.equal(output.success, true, `${space} writer: ${output.error || ''}`);
         const path = resolve(scratch, `draco-${space}.fbx`);
-        await writeFile(path, Buffer.from(output.binary_data));
+        await writeFile(path, Buffer.from(output.bytes));
         written[space] = path.replace(/\\/g, '/');
     }
     const read = runBlender(importScript(written), 'import');

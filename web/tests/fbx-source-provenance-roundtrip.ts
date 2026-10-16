@@ -19,11 +19,11 @@ function nodesByName(scene: any): Map<string, any> {
 const fbx = await loadWasm('fbx');
 for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
     const bytes = await readBytes(path);
-    const source = fbx.parse_fbx(bytes);
+    const source = fbx.read_fbx(bytes);
     assert.equal(source.success, true, `${label} source parse`);
     const expectedRootOrder = source.scene.rootNodes.map((node: any) => node.name);
     for (let repeat = 0; repeat < 8; repeat += 1) {
-        const repeated = fbx.parse_fbx(bytes);
+        const repeated = fbx.read_fbx(bytes);
         assert.equal(repeated.success, true, `${label} repeated source parse ${repeat}`);
         assert.deepEqual(
             repeated.scene.rootNodes.map((node: any) => node.name),
@@ -31,9 +31,9 @@ for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
             `${label} source root order must be deterministic`,
         );
     }
-    const written = fbx.create_fbx_scene(source.scene, { version: 7500 });
+    const written = fbx.write_fbx_scene(source.scene, { version: 7500 });
     assert.equal(written.success, true, `${label} semantic FBX write`);
-    const output = fbx.parse_fbx(new Uint8Array(written.binary_data));
+    const output = fbx.read_fbx(new Uint8Array(written.bytes));
     assert.equal(output.success, true, `${label} semantic FBX reparse`);
     assert.deepEqual(
         output.scene.globalSettings,

@@ -1188,7 +1188,7 @@ fn parse_result_to_js(result: &ParseResult) -> JsValue {
 /// Parse FBX binary file content.
 #[cfg(feature = "read")]
 #[wasm_bindgen]
-pub fn parse_fbx(data: &[u8]) -> JsValue {
+pub fn read_fbx(data: &[u8]) -> JsValue {
     let result = parse_fbx_scene(data);
     parse_result_to_js(&result)
 }
@@ -2173,8 +2173,8 @@ fn export_result_to_js(result: &ExportResult) -> JsValue {
     let obj = Object::new();
     set_bool(&obj, "success", result.success);
     match &result.binary_data {
-        Some(data) => set_js(&obj, "binary_data", &u8_array_to_js(data)),
-        None => set_js(&obj, "binary_data", &JsValue::NULL),
+        Some(data) => set_js(&obj, "bytes", &u8_array_to_js(data)),
+        None => set_js(&obj, "bytes", &JsValue::NULL),
     }
     set_opt_string_null(&obj, "error", &result.error);
     match &result.fbx_stats {
@@ -2560,20 +2560,19 @@ fn export_options_from_js(
     Ok((global_settings, compression, compression_level))
 }
 
-/// Create FBX binary content from mesh data.
+/// Writes one mesh, or an array of them, as binary FBX.
+///
+/// The result is `{ success, error, bytes, fbx_stats }`: every format's writer
+/// returns the file as `bytes`.
 #[cfg(feature = "write")]
 #[wasm_bindgen]
-pub fn create_fbx(meshes_js: JsValue, options_js: JsValue) -> JsValue {
-    let meshes: Result<Vec<MeshInput>, String> = (|| {
-        let array = meshes_js
-            .dyn_ref::<Array>()
-            .ok_or_else(|| "meshes must be an array".to_string())?;
-        let mut out = Vec::with_capacity(array.length() as usize);
-        for index in 0..array.length() {
-            out.push(mesh_input_from_js(&array.get(index))?);
-        }
-        Ok(out)
-    })();
+pub fn write_fbx(meshes_js: JsValue, options_js: JsValue) -> JsValue {
+    let meshes: Result<Vec<MeshInput>, String> = match meshes_js.dyn_ref::<Array>() {
+        Some(array) => (0..array.length())
+            .map(|index| mesh_input_from_js(&array.get(index)))
+            .collect(),
+        None => mesh_input_from_js(&meshes_js).map(|mesh| vec![mesh]),
+    };
     let meshes = match meshes {
         Ok(m) => m,
         Err(e) => {
@@ -2593,11 +2592,11 @@ pub fn create_fbx(meshes_js: JsValue, options_js: JsValue) -> JsValue {
     export_result_to_js(&result)
 }
 
-/// Create FBX binary content while preserving model hierarchy, materials,
-/// textures, animation, and local transforms.
+/// Writes a scene as binary FBX, keeping its model hierarchy, materials,
+/// textures, animation and local transforms. Returns what `write_fbx` does.
 #[cfg(feature = "write")]
-#[wasm_bindgen]
-pub fn create_fbx_scene(scene_js: JsValue, options_js: JsValue) -> JsValue {
+#[wasm_bindgen(js_name = write_fbx_scene)]
+pub fn write_fbx_scene_js(scene_js: JsValue, options_js: JsValue) -> JsValue {
     let (_, compression, compression_level) =
         export_options_from_js(&options_js).unwrap_or((None, false, 2));
     let result = match scene_input_from_js(&scene_js) {
@@ -2724,7 +2723,7 @@ fn node_kind_as_str(kind: draco_io::FbxNodeKind) -> String {
 
 /// Converts one JS mesh payload into the shared `draco-io` mesh instance.
 ///
-/// Both the scene writer and the flat `create_fbx` entry point go through
+/// Both the scene writer and the flat `write_fbx` entry point go through
 /// this, so the two paths cannot drift apart.
 #[cfg(feature = "write")]
 fn tangent_output_to_fbx(set: &TangentSetOutput) -> draco_io::FbxTangentSet {
@@ -3052,10 +3051,10 @@ fn create_fbx_internal(
     compression: bool,
     compression_level: u8,
 ) -> ExportResult {
-    // The legacy `create_fbx` entry point receives a flat mesh list with no
+    // The flat `write_fbx` entry point receives a mesh list with no
     // hierarchy, so every mesh becomes its own root Model. Materials,
     // textures and animation are not expressible here; callers that need them
-    // go through `create_fbx_scene`. Serialization itself is shared with that
+    // go through `write_fbx_scene`. Serialization itself is shared with that
     // path so the two cannot emit divergent FBX.
     let scene = match flat_meshes_to_scene(meshes) {
         Ok(mut scene) => {
@@ -3346,7 +3345,7 @@ mod writer_tests {
             shallow.binary_data.unwrap().len(),
             deep.binary_data.unwrap().len(),
             "level 1 and level 9 produced the same size -- compressionLevel is not \
-             reaching the encoder through create_fbx",
+             reaching the encoder through write_fbx",
         );
     }
 }

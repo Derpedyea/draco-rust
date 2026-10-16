@@ -28,16 +28,15 @@ import { SPLAT_BUDGET, isSplatPly, splatBitsFor } from '../splat.ts';
 /**
  * What a writer handed back.
  *
- * The three payload fields are mutually exclusive and format-dependent: the
- * binary writers fill `binary_data`, the glTF document route fills `json_data`,
- * and OBJ and PLY fill `data`. The downloader picks whichever is present.
+ * The same shape the packages' writers return: `bytes` is the file, and a
+ * text format -- OBJ, ASCII PLY and STL, glTF as JSON -- also has it as `text`,
+ * which the downloader prefers.
  */
 export interface ExportResult {
   success: boolean;
   error?: string;
-  data?: string;
-  json_data?: string;
-  binary_data?: ArrayLike<number>;
+  text?: string;
+  bytes?: ArrayLike<number>;
   /** What the route did, for the console. */
   message?: string;
   /** Set by any route that writes a Draco-compressed payload. */
@@ -113,7 +112,7 @@ export interface ExportSettings {
   /**
    * Forces the Draco mesh connectivity coder, or leaves it to the encoder's
    * own default. `0` (or unset) is auto, `1` forces sequential, `2` forces
-   * EdgeBreaker -- matching what `compressPrimitive` and `create_drc` both
+   * EdgeBreaker -- matching what `compressPrimitive` and `encode_draco` both
    * read, since both routes hit the same encoder underneath.
    */
   encodingMethod?: number;
@@ -280,7 +279,7 @@ export function exportSceneDocumentToGlb(
   return {
     result: {
       success: true,
-      binary_data: compressed?.binary ?? output.binary,
+      bytes: compressed?.binary ?? output.binary,
       draco_stats: compressed?.stats ?? null,
       message: compressed
         ? 'SceneDocument compressed with Draco and exported as GLB'
@@ -379,7 +378,7 @@ export function exportGltfDocument(settings: ExportSettings): ExportOutcome {
       return {
         result: {
           success: true,
-          binary_data: asset.glb(2),
+          bytes: asset.glb(2),
           draco_stats: dracoStats,
           message: useDraco
             ? 'Document compressed with Draco and exported as GLB'
@@ -394,7 +393,8 @@ export function exportGltfDocument(settings: ExportSettings): ExportOutcome {
       return {
         result: {
           success: true,
-          json_data: new TextDecoder().decode(asset.minifiedJson()),
+          text: new TextDecoder().decode(asset.minifiedJson()),
+          bytes: asset.minifiedJson(),
           message: 'Document exported as minified JSON glTF',
         },
         warnings: [],
@@ -406,7 +406,7 @@ export function exportGltfDocument(settings: ExportSettings): ExportOutcome {
       return {
         result: {
           success: true,
-          json_data: glbToEmbeddedGltf(asset.glb(2)),
+          ...gltfText(glbToEmbeddedGltf(asset.glb(2))),
           draco_stats: dracoStats,
           message: 'Exported as JSON glTF with its binary embedded',
         },
@@ -708,8 +708,7 @@ export async function exportToObj(
     include_uvs: settings.includeUvs,
     precision: 6,
   };
-  if (meshes.length === 1) return modules.obj.module.create_obj(meshes[0], options);
-  return modules.obj.module.create_obj_multi(meshes, options);
+  return modules.obj.module.write_obj(meshes.length === 1 ? meshes[0] : meshes, options);
 }
 
 export async function exportToPly(
@@ -732,7 +731,7 @@ export async function exportToPly(
     precision: 6,
     format: splat ? 'binary_little_endian' : 'ascii',
   };
-  return modules.ply.module.create_ply(merged, options);
+  return modules.ply.module.write_ply(merged, options);
 }
 
 /**
@@ -747,7 +746,7 @@ export async function exportToStl(meshes: PreparedMesh[]) {
     return { success: false, error: 'STL module not loaded' };
   }
   const merged = mergeMeshes(meshes);
-  return modules.stl.module.create_stl(
+  return modules.stl.module.write_stl(
     {
       positions: new Float32Array(merged.positions),
       indices: new Uint32Array(merged.indices),
@@ -779,7 +778,7 @@ export async function exportToDrc(
       + `${SPLAT_BUDGET.positions} bits, harmonics at ${SPLAT_BUDGET.harmonics}, everything `
       + `else at ${SPLAT_BUDGET.other} -- and the quantization sliders do not apply to it`,
     );
-    return modules.drc.module.create_drc(splatForDrc(merged), {
+    return modules.drc.module.encode_draco(splatForDrc(merged), {
       encoding_speed: settings.encodingSpeed,
       // Sequential, as measured. The kd-tree coder imposes one bit depth on
       // every dimension, which is exactly what a per-attribute budget is not.
@@ -794,7 +793,7 @@ export async function exportToDrc(
       include_colors: false,
     });
   }
-  return modules.drc.module.create_drc(merged, {
+  return modules.drc.module.encode_draco(merged, {
     encoding_speed: settings.encodingSpeed,
     encoding_method: settings.encodingMethod,
     position_bits: settings.positionBits,
@@ -862,14 +861,18 @@ export function exportMeshesAsGltf(
  * the writer emits and what the Draco pass operates on. Turning it into JSON is
  * a container change and belongs in one place rather than in each route.
  */
+/** A JSON glTF as an export result carries it: the text, and its bytes. */
+function gltfText(text: string): Pick<ExportResult, 'text' | 'bytes'> {
+  return { text, bytes: new TextEncoder().encode(text) };
+}
+
 function asGltfIfAsked(outcome: ExportOutcome, format: string): ExportOutcome {
-  if (format !== 'gltf' || !outcome.result.success || !outcome.result.binary_data) return outcome;
+  if (format !== 'gltf' || !outcome.result.success || !outcome.result.bytes) return outcome;
   return {
     ...outcome,
     result: {
       ...outcome.result,
-      binary_data: undefined,
-      json_data: glbToEmbeddedGltf(new Uint8Array(outcome.result.binary_data as ArrayLike<number>)),
+      ...gltfText(glbToEmbeddedGltf(new Uint8Array(outcome.result.bytes as ArrayLike<number>))),
       message: 'Exported as JSON glTF with its binary embedded',
     },
   };
@@ -892,7 +895,7 @@ export async function exportToFbx(
   if (!modules.fbx.loaded) {
     return { success: false, error: 'FBX module not loaded' };
   }
-  return modules.fbx.module.create_fbx(meshes, {
+  return modules.fbx.module.write_fbx(meshes, {
     version: 7500,
     globalSettings: FBX_METERS_Y_UP,
     compression,
@@ -909,7 +912,7 @@ export async function exportToFbxScene(
   if (!modules.fbx.loaded) {
     return { success: false, error: 'FBX module not loaded' };
   }
-  return modules.fbx.module.create_fbx_scene(scene, {
+  return modules.fbx.module.write_fbx_scene(scene, {
     version: 7500,
     legacyCompatibility,
     compression,

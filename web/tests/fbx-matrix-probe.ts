@@ -9,7 +9,7 @@ const fbx = await loadWasm('fbx');
 const { buildSceneFromFbx } = await loadFbxViewerAdapter();
 const { Viewer } = await import(pathToFileURL(resolve(here, '..', 'src', 'viewer.ts')).href);
 const { multiplyMat4, invertMat4 } = await import(pathToFileURL(resolve(here, '..', 'src', 'mat4.ts')).href);
-const parsed = fbx.parse_fbx(await readBytes(mixamoFbx));
+const parsed = fbx.read_fbx(await readBytes(mixamoFbx));
 if (!parsed || (parsed.meshes?.length || parsed.scene?.rootNodes?.length || 0) === 0) {
     throw new Error(`Mixamo parse failed: ${JSON.stringify(parsed).slice(0, 300)}`);
 }

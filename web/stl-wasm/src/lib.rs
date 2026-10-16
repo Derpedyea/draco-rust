@@ -87,7 +87,7 @@ pub struct ParseResult {
 /// Parse an STL file from bytes. Handles both the binary and ASCII containers.
 #[cfg(feature = "read")]
 #[wasm_bindgen]
-pub fn parse_stl_bytes(data: &[u8]) -> JsValue {
+pub fn read_stl(data: &[u8]) -> JsValue {
     parse_result_to_js(&parse_stl_internal(data))
 }
 
@@ -214,11 +214,14 @@ pub struct ExportResult {
     pub error: Option<String>,
 }
 
-/// Create an STL file from mesh data.
+/// Writes a mesh, or an array holding one, as STL.
+///
+/// The result is `{ success, error, bytes }`, plus `text` for ASCII output:
+/// every format's writer returns the file as `bytes`.
 #[cfg(feature = "write")]
 #[wasm_bindgen]
-pub fn create_stl(mesh_js: JsValue, options_js: JsValue) -> JsValue {
-    let mesh = match mesh_input_from_js(&mesh_js) {
+pub fn write_stl(mesh_js: JsValue, options_js: JsValue) -> JsValue {
+    let mesh = match one_mesh(&mesh_js).and_then(|mesh| mesh_input_from_js(&mesh)) {
         Ok(mesh) => mesh,
         Err(error) => {
             return export_result_to_js(&ExportResult {
@@ -233,15 +236,30 @@ pub fn create_stl(mesh_js: JsValue, options_js: JsValue) -> JsValue {
     export_result_to_js(&create_stl_internal(&mesh, &options))
 }
 
+/// The one mesh a single-mesh format takes, given alone or as an array of one.
+#[cfg(feature = "write")]
+fn one_mesh(value: &JsValue) -> Result<JsValue, String> {
+    match value.dyn_ref::<js_sys::Array>() {
+        Some(array) if array.length() == 1 => Ok(array.get(0)),
+        Some(array) => Err(format!(
+            "STL holds one mesh, and {} were given",
+            array.length()
+        )),
+        None => Ok(value.clone()),
+    }
+}
+
 #[cfg(feature = "write")]
 fn export_result_to_js(result: &ExportResult) -> JsValue {
     let obj = Object::new();
     set_bool(&obj, "success", result.success);
-    set_opt_string(&obj, "data", &result.data);
-    match &result.binary_data {
-        Some(bytes) => set_js(&obj, "binary_data", &u8_array_to_js(bytes)),
-        None => set_js(&obj, "binary_data", &JsValue::UNDEFINED),
-    }
+    set_opt_string(&obj, "text", &result.data);
+    let bytes = match (&result.binary_data, &result.data) {
+        (Some(bytes), _) => u8_array_to_js(bytes),
+        (None, Some(text)) => u8_array_to_js(text.as_bytes()),
+        (None, None) => JsValue::UNDEFINED,
+    };
+    set_js(&obj, "bytes", &bytes);
     set_opt_string(&obj, "error", &result.error);
     obj.into()
 }

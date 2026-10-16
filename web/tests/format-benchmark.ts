@@ -99,7 +99,7 @@ const WARMUP_RUNS = 3;
 
 // Generic over what `call` returns rather than narrowing it to the two fields
 // this function reads: the caller wants the payload back, and a fixed parameter
-// type erases it, so `result.binary_data` below stops existing.
+// type erases it, so `result.bytes` below stops existing.
 function measure<T extends { success?: boolean; error?: string }>(
   label: string,
   call: () => T,
@@ -131,19 +131,19 @@ const vertices = side * side;
 const triangles = (side - 1) * (side - 1) * 2;
 
 const writers: [string, () => any][] = [
-  ['ply', () => ply.create_ply(mesh, {
+  ['ply', () => ply.write_ply(mesh, {
     include_normals: true,
     include_uvs: true,
     include_colors: true,
     precision: 6,
     format: 'binary_little_endian',
   })],
-  ['stl', () => stl.create_stl(
+  ['stl', () => stl.write_stl(
     { positions: mesh.positions, indices: mesh.indices }, { format: 'binary', name: 'grid' },
   )],
-  ['obj', () => obj.create_obj(mesh, { include_normals: true, include_uvs: true, precision: 6 })],
-  ['fbx', () => fbx.create_fbx([mesh], { version: 7500, compression: true })],
-  ['drc', () => drc.create_drc(mesh, {
+  ['obj', () => obj.write_obj(mesh, { include_normals: true, include_uvs: true, precision: 6 })],
+  ['fbx', () => fbx.write_fbx([mesh], { version: 7500, compression: true })],
+  ['drc', () => drc.encode_draco(mesh, {
     encoding_speed: 5,
     position_bits: 14,
     normal_bits: 10,
@@ -160,17 +160,17 @@ const written = new Map<string, Uint8Array>();
 for (const [name, write] of writers) {
   const result = measure(name, write);
   if (!result) continue;
-  const payload = result.binary_data
-    ? new Uint8Array(result.binary_data)
-    : new TextEncoder().encode(result.data);
+  const payload = result.bytes
+    ? new Uint8Array(result.bytes)
+    : new TextEncoder().encode(result.text);
   written.set(name, payload);
 }
 
 const readers: [string, (bytes: Uint8Array) => any][] = [
-  ['ply', (bytes) => ply.parse_ply_bytes(bytes)],
-  ['stl', (bytes) => stl.parse_stl_bytes(bytes)],
-  ['obj', (bytes) => obj.parse_obj_bytes(bytes)],
-  ['fbx', (bytes) => fbx.parse_fbx(bytes)],
+  ['ply', (bytes) => ply.read_ply(bytes)],
+  ['stl', (bytes) => stl.read_stl(bytes)],
+  ['obj', (bytes) => obj.read_obj(bytes)],
+  ['fbx', (bytes) => fbx.read_fbx(bytes)],
   ['drc', (bytes) => drc.parse_drc_bytes(bytes)],
 ];
 

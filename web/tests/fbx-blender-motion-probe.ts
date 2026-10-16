@@ -61,7 +61,7 @@ const blenderSamples = JSON.parse(line.slice('DRACO_BLENDER_JSON='.length));
 const fbx = await loadWasm('fbx');
 const { buildSceneFromFbx } = await import(pathToFileURL(resolve(here, '..', 'src', 'mesh-loader.ts')).href);
 const { Viewer } = await import(pathToFileURL(resolve(here, '..', 'src', 'viewer.ts')).href);
-const parsed = fbx.parse_fbx(await readBytes(MIXAMO));
+const parsed = fbx.read_fbx(await readBytes(MIXAMO));
 const scene = await buildSceneFromFbx(parsed);
 const probe: any = Object.create(Viewer.prototype);
 probe.scene = scene;

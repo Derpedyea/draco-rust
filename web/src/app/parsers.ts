@@ -20,7 +20,7 @@ export async function parseObjFile(data: Uint8Array, resources = Object.create(n
 
   // The geometry crosses as bytes; the text is still decoded here because the
   // MTL scraping below works on lines.
-  const result = modules.obj.module.parse_obj_bytes(data);
+  const result = modules.obj.module.read_obj(data);
   if (result?.success) {
     const textContent = new TextDecoder().decode(data);
     result.materials = parseObjMaterials(textContent, resources, result.warnings || (result.warnings = []));
@@ -78,7 +78,7 @@ export async function parsePlyFile(data: Uint8Array) {
     return { success: false, error: 'PLY module not loaded' };
   }
 
-  const result = modules.ply.module.parse_ply_bytes(data);
+  const result = modules.ply.module.read_ply(data);
   debugLog('PLY parse result:', result);
 
   // A Gaussian splat is an ordinary point cloud to the reader above and a
@@ -116,7 +116,7 @@ export async function parseStlFile(data: Uint8Array) {
     return { success: false, error: 'STL module not loaded' };
   }
 
-  const result = modules.stl.module.parse_stl_bytes(data);
+  const result = modules.stl.module.read_stl(data);
   debugLog('STL parse result:', result);
   return result;
 }
@@ -197,5 +197,5 @@ export async function parseFbxFile(data: Uint8Array) {
     return { success: false, error: 'FBX module not loaded' };
   }
 
-  return modules.fbx.module.parse_fbx(data);
+  return modules.fbx.module.read_fbx(data);
 }

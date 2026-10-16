@@ -8,12 +8,29 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+- **One naming scheme across the packages, and one result shape for writing.**
+  This breaks every caller of a format package or the encoder:
+  - `@draco-rust/obj`: `parse_obj_bytes` is `read_obj`; `create_obj` and
+    `create_obj_multi` are one `write_obj`, which takes a mesh or an array.
+  - `@draco-rust/ply`: `parse_ply_bytes` is `read_ply`, `create_ply` is
+    `write_ply`. `@draco-rust/stl`: `parse_stl_bytes` is `read_stl`,
+    `create_stl` is `write_stl`. Both writers take a mesh or an array of one.
+  - `@draco-rust/fbx`: `parse_fbx` is `read_fbx`, `create_fbx` is `write_fbx`,
+    which now also takes a single mesh, and `create_fbx_scene` is
+    `write_fbx_scene`.
+  - `@draco-rust/encoder`: `create_drc` is `encode_draco`, the pair of the
+    decoder's `decode_draco`.
+  - Every writer returns `{ success, error, bytes }`: the file as a
+    `Uint8Array` in `bytes`, where OBJ used `data` and the rest
+    `binary_data`. A text format -- OBJ, ASCII PLY and STL -- also has it as
+    `text`.
 - **Every package runs on workers.** `@draco-rust/obj`, `ply`, `stl`, `fbx`,
   `encoder` and `gltf` each gain a `./pool` entry (and `gltf` a `pool` for
   `./validate` and `./writer`), the decoder's pool made common: the wasm is
   compiled once and handed to every worker, tasks go to the least loaded one,
   results come back by transfer, and a task takes an `AbortSignal`. The format
-  pools `parse` and `create` as their functions do, the encoder's `encode`s,
+  pools `read` and `write` as their functions do (FBX also `writeScene`), the
+  encoder's `encode`s,
   and glTF's `read` takes a whole file on a worker and returns its JSON and
   every primitive's geometry as plain arrays, since a `GltfAsset` cannot cross
   threads.

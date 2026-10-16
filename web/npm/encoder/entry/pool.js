@@ -8,7 +8,7 @@ export function createPool(options = {}) {
   const pool = createTaskPool(options);
   return {
     encode: (value, writeOptions = {}, { transfer = false, signal } = {}) =>
-      pool.run('create_drc', [value, writeOptions], { transfer, signal }),
+      pool.run('encode_draco', [value, writeOptions], { transfer, signal }),
     preload: () => pool.preload(),
     setWorkerLimit: (workers) => pool.setWorkerLimit(workers),
     get workerLimit() {

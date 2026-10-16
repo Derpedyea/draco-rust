@@ -60,9 +60,9 @@ for (const channel of weightChannels) {
 }
 
 // Both curves have to survive the writer, not just the JS structure feeding it.
-const written = fbxModule.create_fbx_scene(scene, { version: 7500, legacyCompatibility: false });
+const written = fbxModule.write_fbx_scene(scene, { version: 7500, legacyCompatibility: false });
 assert.ok(written.success, `FBX write failed: ${written.error}`);
-const reparsed = fbxModule.parse_fbx(new Uint8Array(written.binary_data));
+const reparsed = fbxModule.read_fbx(new Uint8Array(written.bytes));
 assert.ok(reparsed.success, `FBX reparse failed: ${reparsed.error}`);
 
 console.log(`SceneDocument FBX morph weights passed (${weightChannels.length} curves)`);

@@ -87,12 +87,12 @@ for (const [spec, decodes] of Object.entries(decoders)) {
   }
 }
 
-const { create_drc } = await load('@draco-rust/encoder');
+const { encode_draco } = await load('@draco-rust/encoder');
 const quad = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]), indices: new Uint32Array([0, 1, 2, 2, 1, 3]) };
-const encoded = create_drc(quad, { position_bits: 14 });
+const encoded = encode_draco(quad, { position_bits: 14 });
 assert.ok(encoded.success, encoded.error);
 const { parse_drc_bytes } = await import('@draco-rust/decoder/mesh');
-const decoded = parse_drc_bytes(encoded.binary_data);
+const decoded = parse_drc_bytes(encoded.bytes);
 assert.ok(decoded.success, decoded.error);
 assert.equal(decoded.meshes[0].indices.length, 6);
 
@@ -113,20 +113,20 @@ for (const spec of ['@draco-rust/gltf', '@draco-rust/gltf/validate', '@draco-rus
 }
 
 const fbx = await load('@draco-rust/fbx');
-const written = fbx.create_fbx([quad], {});
+const written = fbx.write_fbx([quad], {});
 assert.ok(written.success, written.error);
-const read = fbx.parse_fbx(written.binary_data);
+const read = fbx.read_fbx(written.bytes);
 assert.ok(read.success, read.error);
 assert.equal(read.meshes.length, 1);
 
 // Each format reads a file of its own, then writes what it read and reads that
 // back with the same positions.
 const formats = [
-  ['obj', 'parse_obj_bytes', 'create_obj', 'test_cube_shared.obj', true],
-  ['ply', 'parse_ply_bytes', 'create_ply', 'bun_zipper.ply', true],
-  ['ply', 'parse_ply_bytes', 'create_ply', 'point_cloud_pos.ply', false],
-  ['stl', 'parse_stl_bytes', 'create_stl', 'STL/test_sphere_ascii.stl', true],
-  ['stl', 'parse_stl_bytes', 'create_stl', 'STL/bunny.stl', true],
+  ['obj', 'read_obj', 'write_obj', 'test_cube_shared.obj', true],
+  ['ply', 'read_ply', 'write_ply', 'bun_zipper.ply', true],
+  ['ply', 'read_ply', 'write_ply', 'point_cloud_pos.ply', false],
+  ['stl', 'read_stl', 'write_stl', 'STL/test_sphere_ascii.stl', true],
+  ['stl', 'read_stl', 'write_stl', 'STL/bunny.stl', true],
 ];
 for (const [name, parse, create, file, faces] of formats) {
   const module = await load('@draco-rust/' + name);
@@ -137,8 +137,8 @@ for (const [name, parse, create, file, faces] of formats) {
   assert.equal(mesh.indices.length > 0, faces, name + ' ' + file + ' faces');
   const written = module[create](mesh, {});
   assert.ok(written.success, name + ' ' + file + ' write: ' + written.error);
-  // OBJ comes back as text in data, binary PLY and STL in binary_data.
-  const output = written.binary_data ?? new TextEncoder().encode(written.data);
+  // Every writer returns the file as bytes; OBJ has it as text too.
+  const output = written.bytes;
   const again = module[parse](output);
   assert.ok(again.success, name + ' ' + file + ' reread: ' + again.error);
   assert.equal(again.meshes[0].positions.length, mesh.positions.length, name + ' ' + file + ' round trip');
@@ -146,20 +146,20 @@ for (const [name, parse, create, file, faces] of formats) {
   // The package's pool gives a worker's answer, the same as the call here.
   const { createPool } = await import('@draco-rust/' + name + '/pool');
   const pool = createPool({ workers: 2 });
-  const [parsedThere, writtenThere] = await Promise.all([pool.parse(await fixture(file)), pool.create(mesh, {})]);
-  assert.deepEqual(parsedThere, first, name + ' ' + file + ': pool parse');
-  assert.deepEqual(writtenThere, written, name + ' ' + file + ': pool create');
+  const [parsedThere, writtenThere] = await Promise.all([pool.read(await fixture(file)), pool.write(mesh, {})]);
+  assert.deepEqual(parsedThere, first, name + ' ' + file + ': pool read');
+  assert.deepEqual(writtenThere, written, name + ' ' + file + ': pool write');
   pool.dispose();
 }
 
 // The other pools: FBX both ways, the encoder, and glTF read whole on a worker.
 {
   const fbxPool = (await import('@draco-rust/fbx/pool')).createPool({ workers: 1 });
-  const writtenThere = await fbxPool.create([quad], {});
-  assert.deepEqual(writtenThere, written, 'fbx pool create');
-  assert.deepEqual(await fbxPool.parse(written.binary_data), read, 'fbx pool parse');
+  const writtenThere = await fbxPool.write([quad], {});
+  assert.deepEqual(writtenThere, written, 'fbx pool write');
+  assert.deepEqual(await fbxPool.read(written.bytes), read, 'fbx pool read');
   const controller = new AbortController();
-  const abandoned = fbxPool.parse(written.binary_data, { signal: controller.signal });
+  const abandoned = fbxPool.read(written.bytes, { signal: controller.signal });
   controller.abort();
   await assert.rejects(abandoned, { name: 'AbortError' });
   fbxPool.dispose();

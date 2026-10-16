@@ -54,13 +54,13 @@ print('DRACO_BLENDER_JSON='+json.dumps({'source':snap(source),'output':snap(outp
 
 try {
     for (const [label, path] of [['Mixamo', mixamoFbx], ['Samba', sambaFbx]]) {
-        const parsed = fbx.parse_fbx(await readBytes(path));
+        const parsed = fbx.read_fbx(await readBytes(path));
         const { document, provenance } = buildSceneDocumentWithFbxProvenance(parsed);
         const scene = buildFbxSceneFromDocument(document, { provenance });
-        const written = fbx.create_fbx_scene(scene, { version: 7500 });
+        const written = fbx.write_fbx_scene(scene, { version: 7500 });
         assert.equal(written.success, true, `${label} writer`);
         const output = resolve(scratch, `${label}.fbx`);
-        await writeFile(output, Buffer.from(written.binary_data));
+        await writeFile(output, Buffer.from(written.bytes));
         const result = spawnSync(blender, ['--background', '--python-expr', blenderScript(path, output)], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
         if (result.status !== 0) throw new Error(`Blender ${label} import failed:\n${result.stderr || result.stdout}`);
         const line = result.stdout.split(/\r?\n/).find((value) => value.startsWith('DRACO_BLENDER_JSON='));
@@ -85,10 +85,10 @@ try {
         await loadWasm('gltf'),
     );
     const foxScene = buildFbxSceneFromDocument(foxDocument);
-    const foxWritten = fbx.create_fbx_scene(foxScene, { version: 7500 });
+    const foxWritten = fbx.write_fbx_scene(foxScene, { version: 7500 });
     assert.equal(foxWritten.success, true, `Fox writer: ${foxWritten.error || ''}`);
     const foxOutput = resolve(scratch, 'Fox.fbx');
-    await writeFile(foxOutput, Buffer.from(foxWritten.binary_data));
+    await writeFile(foxOutput, Buffer.from(foxWritten.bytes));
     const foxScript = `import bpy,json\nbpy.ops.wm.read_factory_settings(use_empty=True)\nbpy.ops.import_scene.fbx(filepath=${JSON.stringify(foxOutput)})\nprint('DRACO_FOX_BLENDER_JSON='+json.dumps({'meshes':len([obj for obj in bpy.context.scene.objects if obj.type=='MESH']),'armatures':len([obj for obj in bpy.context.scene.objects if obj.type=='ARMATURE'])},separators=(',',':')))\n`;
     const foxResult = spawnSync(blender, ['--background', '--python-expr', foxScript], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     assert.equal(foxResult.status, 0, `Fox Blender import: ${foxResult.stderr || foxResult.stdout}`);

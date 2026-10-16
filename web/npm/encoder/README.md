@@ -11,15 +11,15 @@ bytes as Google's encoder. It is not affiliated with Google. To decode, use
 ## Usage
 
 ```js
-import init, { create_drc } from "@draco-rust/encoder";
+import init, { encode_draco } from "@draco-rust/encoder";
 
 await init();
-const result = create_drc(
+const result = encode_draco(
   { positions, indices, normals, uvs, colors },  // typed arrays; all but positions optional
   { position_bits: 14, normal_bits: 10, texcoord_bits: 12, encoding_speed: 5, decoding_speed: 5 },
 );
 if (!result.success) throw new Error(result.error);
-const drc = result.binary_data; // Uint8Array
+const drc = result.bytes; // Uint8Array
 ```
 
 `positions` is a `Float32Array` of xyz triples and `indices` a `Uint32Array` of
@@ -40,7 +40,7 @@ the calling thread:
 import { createPool } from "@draco-rust/encoder/pool";
 
 const pool = createPool({ workers: 2 });
-const result = await pool.encode(mesh, { position_bits: 14 }); // what create_drc returns
+const result = await pool.encode(mesh, { position_bits: 14 }); // what encode_draco returns
 pool.dispose();
 ```
 

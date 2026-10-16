@@ -19,6 +19,8 @@ use wasm_bridge::{
     required_u32_array,
 };
 use wasm_bridge::{set_bool, set_opt_string};
+#[cfg(feature = "write")]
+use wasm_bridge::{set_js as set_js_value, u8_array_to_js};
 
 #[cfg(feature = "read")]
 use std::collections::HashMap;
@@ -79,7 +81,7 @@ pub struct ParseResult {
 /// signature to keep in step.
 #[cfg(feature = "read")]
 #[wasm_bindgen]
-pub fn parse_obj_bytes(data: &[u8]) -> JsValue {
+pub fn read_obj(data: &[u8]) -> JsValue {
     match std::str::from_utf8(data) {
         Ok(content) => parse_result_to_js(&parse_obj_internal(content)),
         Err(e) => {
@@ -367,29 +369,20 @@ pub struct ExportResult {
     pub error: Option<String>,
 }
 
-/// Create OBJ content from mesh data.
+/// Writes one mesh, or an array of them, as OBJ: each mesh is an object of
+/// its own, `o` and its name where it has one.
+///
+/// The result is `{ success, error, text, bytes }`: the file as text and as
+/// its UTF-8 bytes, which is what every format's writer returns as `bytes`.
 #[cfg(feature = "write")]
 #[wasm_bindgen]
-pub fn create_obj(mesh_js: JsValue, options_js: JsValue) -> JsValue {
-    let mesh = match mesh_input_from_js(&mesh_js) {
-        Ok(mesh) => mesh,
-        Err(error) => {
-            return export_result_to_js(&ExportResult {
-                success: false,
-                data: None,
-                error: Some(error),
-            });
-        }
+pub fn write_obj(meshes_js: JsValue, options_js: JsValue) -> JsValue {
+    let meshes = if Array::is_array(&meshes_js) {
+        mesh_input_array_from_js(&meshes_js)
+    } else {
+        mesh_input_from_js(&meshes_js).map(|mesh| vec![mesh])
     };
-    let options = export_options_from_js(&options_js);
-    export_result_to_js(&create_obj_internal(&mesh, &options))
-}
-
-/// Create OBJ content from multiple meshes.
-#[cfg(feature = "write")]
-#[wasm_bindgen]
-pub fn create_obj_multi(meshes_js: JsValue, options_js: JsValue) -> JsValue {
-    let meshes = match mesh_input_array_from_js(&meshes_js) {
+    let meshes = match meshes {
         Ok(meshes) => meshes,
         Err(error) => {
             return export_result_to_js(&ExportResult {
@@ -407,8 +400,12 @@ pub fn create_obj_multi(meshes_js: JsValue, options_js: JsValue) -> JsValue {
 fn export_result_to_js(result: &ExportResult) -> JsValue {
     let obj = Object::new();
     set_bool(&obj, "success", result.success);
-    set_opt_string(&obj, "data", &result.data);
     set_opt_string(&obj, "error", &result.error);
+    set_opt_string(&obj, "text", &result.data);
+    match &result.data {
+        Some(text) => set_js_value(&obj, "bytes", &u8_array_to_js(text.as_bytes())),
+        None => set_js_value(&obj, "bytes", &JsValue::UNDEFINED),
+    }
     obj.into()
 }
 
@@ -442,11 +439,6 @@ fn export_options_from_js(value: &JsValue) -> ExportOptions {
         include_uvs: opt_bool_from_js(value, "include_uvs"),
         precision: opt_u32_from_js(value, "precision"),
     }
-}
-
-#[cfg(feature = "write")]
-fn create_obj_internal(mesh: &MeshInput, options: &ExportOptions) -> ExportResult {
-    create_obj_multi_internal(std::slice::from_ref(mesh), options)
 }
 
 /// Roughly how much text a mesh list will produce, so the buffer is taken in
@@ -715,7 +707,8 @@ mod writer_tests {
             name: Some("triangle".to_string()),
         };
 
-        let result = create_obj_internal(&mesh, &ExportOptions::default());
+        let result =
+            create_obj_multi_internal(std::slice::from_ref(&mesh), &ExportOptions::default());
         assert!(result.success);
         assert!(result.data.is_some());
         let data = result.data.unwrap();

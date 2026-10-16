@@ -41,7 +41,7 @@ export const modules: Record<string, ModuleSlot> = {
 };
 
 /**
- * The FBX semantic scene, as `parse_fbx` hands it over.
+ * The FBX semantic scene, as `read_fbx` hands it over.
  *
  * Deliberately left open: it is a large reader structure that two independent
  * adapters interpret, and describing it properly belongs with reconciling those

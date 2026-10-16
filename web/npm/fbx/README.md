@@ -11,19 +11,21 @@ targets, rather than a flat list of meshes. It is part of
 ## Usage
 
 ```js
-import init, { parse_fbx, create_fbx } from "@draco-rust/fbx";
+import init, { read_fbx, write_fbx } from "@draco-rust/fbx";
 
 await init();
-const scene = parse_fbx(fbxBytes);
+const scene = read_fbx(fbxBytes);
 if (!scene.success) throw new Error(scene.error);
 console.log(scene.meshes.length, scene.warnings);
 
-const written = create_fbx([{ positions, indices, normals, uvs }], {});
-const fbx = written.binary_data; // Uint8Array
+const written = write_fbx({ positions, indices, normals, uvs }, {}); // or an array of meshes
+const fbx = written.bytes; // Uint8Array
 ```
 
-Compressed FBX arrays (zlib) are read, which every mainstream exporter writes.
-ASCII FBX is not supported.
+`write_fbx_scene(scene, options)` writes a whole scene instead: model
+hierarchy, materials, textures, animation and local transforms. Compressed FBX
+arrays (zlib) are read, which every mainstream exporter writes. ASCII FBX is
+not supported.
 
 ## On workers
 
@@ -34,13 +36,11 @@ A large file blocks the calling thread while it is read or written.
 import { createPool } from "@draco-rust/fbx/pool";
 
 const pool = createPool({ workers: 2 }); // default: cores - 1, at most 4
-const result = await pool.parse(bytes); // what parse_fbx returns
-const written = await pool.create(mesh, {}); // what create_fbx returns
+const result = await pool.read(bytes); // what read_fbx returns
+const written = await pool.write(meshes, {}); // what write_fbx returns
+const scene = await pool.writeScene(sceneInput, {}); // what write_fbx_scene returns
 pool.dispose();
 ```
-
-`parse` runs `parse_fbx`, `create` runs `create_fbx`, and `createScene` runs
-`create_fbx_scene`.
 
 The workers start as work arrives, and the wasm is compiled once for all of
 them. Inputs are copied to the worker, or handed over with `{ transfer: true }`;
