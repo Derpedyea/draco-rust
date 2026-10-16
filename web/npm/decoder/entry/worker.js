@@ -15,10 +15,10 @@ listen(async (message) => {
     ready = init({ module_or_path: message.module });
     return;
   }
-  const { id, data, attributes } = message;
+  const { id, data, attributes, options } = message;
   try {
     await ready;
-    const result = decode_draco(data, attributes);
+    const result = decode_draco(data, attributes, options);
     const transfer = result.attributes.map((attribute) => attribute.array.buffer);
     if (result.index) transfer.push(result.index.buffer);
     port.postMessage({ id, result }, transfer);

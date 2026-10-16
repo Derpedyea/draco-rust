@@ -57,15 +57,35 @@ export interface DracoAttribute {
   normalized: boolean;
 }
 
+export interface DracoDecodeOptions {
+  /**
+   * The index's array: `"Uint32Array"`, the default, or `"auto"`, which uses a
+   * `Uint16Array` when every point number fits, at most 65536 points, and
+   * halves what a worker sends back.
+   */
+  index?: "Uint32Array" | "auto";
+}
+
 export interface DracoDecodeResult {
   success: boolean;
   error?: string;
   warnings: string[];
   geometry?: "mesh" | "point_cloud";
   /** Triangle corners for a mesh, `null` for a point cloud. */
-  index: Uint32Array | null;
+  index: Uint32Array | Uint16Array | null;
   attributes: DracoAttribute[];
 }
+
+/**
+ * Decodes a Draco stream and returns its attributes as typed arrays: every
+ * attribute in its own type, or the ones `attributes` requests, converted as
+ * upstream's `GetAttributeDataArrayForAllPoints` converts them.
+ */
+export function decode_draco(
+  data: Uint8Array,
+  attributes?: DracoAttributeRequest[],
+  options?: DracoDecodeOptions,
+): DracoDecodeResult;
 "#;
 
 /// Decodes a Draco stream and returns its attributes as typed arrays.
@@ -85,16 +105,16 @@ export interface DracoDecodeResult {
 ///
 /// The result is `{ success, error, warnings, geometry, index, attributes }`,
 /// where `geometry` is `"mesh"` or `"point_cloud"` as the stream's header says,
-/// `index` a `Uint32Array` of triangle corners for a mesh and `null` for a
-/// point cloud, and each attribute `{ name, uniqueId, semantic, array,
-/// itemSize, normalized }`.
-#[wasm_bindgen(unchecked_return_type = "DracoDecodeResult")]
-pub fn decode_draco(
-    data: &[u8],
-    #[wasm_bindgen(unchecked_param_type = "DracoAttributeRequest[] | undefined")]
-    attributes: JsValue,
-) -> JsValue {
-    match decode(data, &attributes) {
+/// `index` the triangle corners for a mesh and `null` for a point cloud, and
+/// each attribute `{ name, uniqueId, semantic, array, itemSize, normalized }`.
+/// The index is a `Uint32Array`, or with `options.index` set to `"auto"` a
+/// `Uint16Array` where the points number at most 65536.
+///
+/// Its TypeScript declaration is written by hand in the section above, where
+/// the trailing parameters can be optional.
+#[wasm_bindgen(skip_typescript)]
+pub fn decode_draco(data: &[u8], attributes: JsValue, options: Option<Object>) -> JsValue {
+    match decode(data, &attributes, options.as_ref()) {
         Ok(result) => result.into(),
         Err(error) => {
             let obj = Object::new();
@@ -133,8 +153,9 @@ enum Target {
     F32,
 }
 
-fn decode(data: &[u8], attributes: &JsValue) -> Result<Object, String> {
+fn decode(data: &[u8], attributes: &JsValue, options: Option<&Object>) -> Result<Object, String> {
     let requests = parse_requests(attributes)?;
+    let compact_index = parse_compact_index(options)?;
     let mesh = crate::decode_mesh(data)?;
     // Byte 7 of the header is the encoder type, which upstream's
     // `GetEncodedGeometryType` reads: 0 a point cloud, 1 a triangular mesh.
@@ -185,13 +206,37 @@ fn decode(data: &[u8], attributes: &JsValue) -> Result<Object, String> {
             let face = mesh.face(draco_core::geometry_indices::FaceIndex(face as u32));
             corners.extend(face.iter().map(|point| point.0));
         }
-        Uint32Array::from(corners.as_slice()).into()
+        // Every corner is below the point count, so at most 65536 points fit
+        // in sixteen bits.
+        if compact_index && mesh.num_points() <= 1 << 16 {
+            let narrow: Vec<u16> = corners.iter().map(|&corner| corner as u16).collect();
+            Uint16Array::from(narrow.as_slice()).into()
+        } else {
+            Uint32Array::from(corners.as_slice()).into()
+        }
     } else {
         JsValue::NULL
     };
     set_js(&obj, "index", &index);
     set_js(&obj, "attributes", &out.into());
     Ok(obj)
+}
+
+/// Whether `options.index` asks for the narrowest index that holds the points.
+fn parse_compact_index(options: Option<&Object>) -> Result<bool, String> {
+    let Some(options) = options else {
+        return Ok(false);
+    };
+    let index = Reflect::get(options, &JsValue::from_str("index"))
+        .map_err(|_| "options could not be read".to_string())?;
+    if index.is_undefined() {
+        return Ok(false);
+    }
+    match index.as_string().as_deref() {
+        Some("Uint32Array") => Ok(false),
+        Some("auto") => Ok(true),
+        _ => Err("options.index must be \"Uint32Array\" or \"auto\"".to_string()),
+    }
 }
 
 fn label(request: &Request, attribute: &PointAttribute) -> String {

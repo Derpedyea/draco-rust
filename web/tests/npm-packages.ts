@@ -181,6 +181,30 @@ for (const spec of Object.keys(decoders)) {
   assert.equal(copy.byteLength, streams.mesh.byteLength, 'a decode copies the stream unless told otherwise');
   assert.ok((await pool.decode(copy, undefined, { transfer: true })).success);
   assert.equal(copy.byteLength, 0, 'transfer hands the stream to the worker');
+
+  // index: 'auto' reaches the worker: the bunny's points fit sixteen bits.
+  const wide = await pool.decode(streams.mesh);
+  const narrow = await pool.decode(streams.mesh, undefined, { index: 'auto' });
+  assert.ok(wide.index instanceof Uint32Array && narrow.index instanceof Uint16Array);
+  assert.deepEqual(Array.from(narrow.index), Array.from(wide.index));
+
+  // An abort settles the caller at once; the worker's result is dropped and
+  // the pool goes on decoding.
+  const before = new AbortController();
+  before.abort();
+  await assert.rejects(pool.decode(streams.mesh, undefined, { signal: before.signal }), { name: 'AbortError' });
+  const during = new AbortController();
+  const abandoned = pool.decode(streams.mesh, undefined, { signal: during.signal });
+  const queued = pool.decode(streams.mesh);
+  during.abort();
+  await assert.rejects(abandoned, { name: 'AbortError' });
+  assert.ok((await queued).success, 'the decode behind an abandoned one completes');
+  const reason = new Error('no longer needed');
+  const custom = new AbortController();
+  const withReason = pool.decode(streams.mesh, undefined, { signal: custom.signal });
+  custom.abort(reason);
+  await assert.rejects(withReason, (error) => error === reason);
+
   const pending = pool.decode(streams.mesh);
   pool.dispose();
   await assert.rejects(pending, /disposed/);

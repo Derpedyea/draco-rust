@@ -8,6 +8,16 @@ has changed in them; each package version has a section of its own.
 
 ## Unreleased
 
+- **`@draco-rust/decoder` can send a smaller index, and a pool decode can be
+  abandoned.** `decode_draco(data, attributes, { index: "auto" })` returns a
+  `Uint16Array` index wherever the points number at most 65536, half the bytes
+  a worker sends back; the default stays `Uint32Array`, and `DRACOLoader`
+  keeps it, as three's own loader does. `pool.decode` passes `index` through
+  and takes an `AbortSignal` as `signal`: the promise rejects at once, a
+  decode not yet sent is never sent, and one a worker has started runs out
+  with its result dropped. `decode_draco`'s `attributes` and `options` are
+  now optional in its TypeScript declaration.
+
 ## [0.2.0] - 2026-10-11
 
 - **`@draco-rust/decoder/three` exports three.js's `DRACOLoader` itself**,

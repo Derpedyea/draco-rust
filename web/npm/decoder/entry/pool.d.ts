@@ -1,4 +1,4 @@
-import type { DracoAttributeRequest, DracoDecodeResult } from './index.js';
+import type { DracoAttributeRequest, DracoDecodeOptions, DracoDecodeResult } from './index.js';
 
 export interface DecoderPoolOptions {
   /**
@@ -14,12 +14,18 @@ export interface DecoderPoolOptions {
   wasm?: string | URL | Response | BufferSource | WebAssembly.Module;
 }
 
-export interface DecodeOptions {
+export interface DecodeOptions extends DracoDecodeOptions {
   /**
    * Hand the stream's buffer to the worker instead of copying it, leaving it
    * detached here. For a buffer nothing else reads afterwards.
    */
   transfer?: boolean;
+  /**
+   * Abandons the decode: the promise rejects with the signal's reason at once.
+   * A decode a worker has already started still runs to its end, and its
+   * result is dropped; one not yet sent is never sent.
+   */
+  signal?: AbortSignal;
 }
 
 export interface DecoderPool {

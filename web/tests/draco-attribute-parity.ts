@@ -39,6 +39,8 @@ const semantics = ['POSITION', 'NORMAL', 'COLOR', 'TEX_COORD', 'GENERIC'] as con
 const bytesOf = (array: ArrayBufferView) => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
 
 let files = 0;
+let narrowIndices = 0;
+let wideIndices = 0;
 let compared = 0;
 let refusals = 0;
 let bySemantic = 0;
@@ -67,6 +69,14 @@ function compareStream(name: string, data: Uint8Array) {
       const theirIndex = new Uint32Array(upstream.HEAPF32.buffer, ptr, count).slice();
       upstream._free(ptr);
       assert.deepEqual(ours.index, theirIndex, `${name}: index`);
+      // `index: "auto"` gives the same corners, in sixteen bits while every
+      // point number fits.
+      const compact = drc.decode_draco(data, undefined, { index: 'auto' }).index;
+      const fits = geometry.num_points() <= 65536;
+      assert.equal(compact.constructor, fits ? Uint16Array : Uint32Array, `${name}: auto index type`);
+      assert.deepEqual(Array.from(compact), Array.from(theirIndex), `${name}: auto index values`);
+      if (fits) narrowIndices += 1;
+      else wideIndices += 1;
     } else {
       assert.equal(ours.index, null, `${name}: a point cloud has no index`);
     }
@@ -192,6 +202,36 @@ for (const [add, Stored, values] of stored) {
 }
 assert.equal(synthetic, 14);
 
+// A grid past 65536 points, where `index: "auto"` has to stay at 32 bits.
+{
+  const side = 301;
+  const points = side * side;
+  const position = new Float32Array(points * 3);
+  for (let i = 0; i < points; i += 1) position.set([i % side, Math.floor(i / side), 0], i * 3);
+  const faces = new Uint32Array((side - 1) * (side - 1) * 6);
+  let at = 0;
+  for (let y = 0; y < side - 1; y += 1) {
+    for (let x = 0; x < side - 1; x += 1) {
+      const p = y * side + x;
+      faces.set([p, p + 1, p + side, p + 1, p + side + 1, p + side], at);
+      at += 6;
+    }
+  }
+  const builder = new encoder.MeshBuilder();
+  const mesh = new encoder.Mesh();
+  builder.AddFacesToMesh(mesh, faces.length / 3, faces);
+  builder.AddFloatAttribute(mesh, encoder.POSITION, points, 3, position);
+  const enc = new encoder.Encoder();
+  const out = new encoder.DracoInt8Array();
+  const length = enc.EncodeMeshToDracoBuffer(mesh, out);
+  assert.ok(length > 0, 'upstream encoded no grid');
+  const data = new Uint8Array(length);
+  for (let i = 0; i < length; i += 1) data[i] = out.GetValue(i);
+  compareStream(`grid ${side}x${side}`, data);
+  for (const object of [out, enc, mesh, builder]) encoder.destroy(object);
+}
+assert.ok(narrowIndices > 0 && wideIndices > 0, `auto index: ${narrowIndices} narrow, ${wideIndices} wide`);
+
 // A request for an id the stream does not have is an error, not a silent hole.
 const bunny = new Uint8Array(await readFile(resolve(testdata, 'bunny_cpp_standard.drc')));
 const missing = drc.decode_draco(bunny, [{ name: 'x', id: 4242, type: 'Float32Array' }]);
@@ -205,5 +245,6 @@ assert.deepEqual(unreachable, [], 'attributes no request reaches');
 assert.ok(bySemantic > 0, 'no attribute was reached by semantic');
 console.log(
   `draco-attribute-parity: ${compared} attribute arrays over ${files} streams (${synthetic} written for the edges) ` +
+    `and ${narrowIndices + wideIndices} auto indices (${wideIndices} kept at 32 bits) ` +
     `match upstream byte for byte (${bySemantic} legacy attributes reached by semantic), ${refusals} refusals agree`,
 );

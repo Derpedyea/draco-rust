@@ -60,7 +60,9 @@ if (!result.success) throw new Error(result.error);
 const { index, attributes } = result; // attributes[i]: { name, array, itemSize, normalized, ... }
 ```
 
-Without the second argument every attribute comes back in its own type.
+Without the second argument every attribute comes back in its own type. The
+index is a `Uint32Array`; a third argument `{ index: "auto" }` makes it a
+`Uint16Array` wherever the points number at most 65536, half the bytes.
 
 ### On workers
 
@@ -80,6 +82,10 @@ them. The stream is copied to the worker; `pool.decode(bytes, requests, {
 transfer: true })` hands over the buffer itself instead. The pool runs on Web
 Workers, on Node's worker threads (Node 20.16 and later), and from a CDN. With
 `workers: 0`, or where there are no workers, it decodes on the calling thread.
+`pool.decode` also takes `index`, as `decode_draco` does, and an `AbortSignal`
+as `signal`: aborting rejects the promise at once. A decode a worker has
+already started still runs to its end and its result is dropped; one not yet
+sent is never sent.
 A bundler that follows `new URL("./worker.js", import.meta.url)`, as Vite and
 webpack do, emits the worker on its own.
 

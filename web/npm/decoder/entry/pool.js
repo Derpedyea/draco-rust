@@ -144,27 +144,51 @@ export function createDecoderPool(options = {}) {
   const onThisThread = () =>
     (local ??= load().then((module) => init({ module_or_path: module })));
 
-  async function decode(data, attributes, { transfer = false } = {}) {
+  const aborted = (signal) =>
+    signal.reason ?? new DOMException('The decode was aborted', 'AbortError');
+
+  async function decode(data, attributes, { transfer = false, signal, index } = {}) {
     if (disposed) throw new Error('the decoder pool was disposed');
+    signal?.throwIfAborted();
     const bytes = ArrayBuffer.isView(data)
       ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
       : new Uint8Array(data);
+    const options = index === undefined ? undefined : { index };
     if (limit > 0 && workersAvailable()) {
       const module = await load();
       if (disposed) throw new Error('the decoder pool was disposed');
+      signal?.throwIfAborted();
       const slot = pick(module);
       if (slot) {
         const id = nextId++;
         const sent = transfer ? bytes : bytes.slice();
         return new Promise((resolve, reject) => {
-          slot.pending.set(id, { resolve, reject });
+          const task = { resolve, reject };
+          // A decode a worker has started runs to its end. Aborting it settles
+          // the caller now and drops the result when it comes; the task stays
+          // counted against its worker until then, so the load stays true.
+          const onAbort = () => {
+            task.resolve = task.reject = () => {};
+            reject(aborted(signal));
+          };
+          if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+            const settle = (done) => (value) => {
+              signal.removeEventListener('abort', onAbort);
+              done(value);
+            };
+            task.resolve = settle(resolve);
+            task.reject = settle(reject);
+          }
+          slot.pending.set(id, task);
           slot.worker.busy(true);
-          slot.worker.post({ id, data: sent, attributes }, [sent.buffer]);
+          slot.worker.post({ id, data: sent, attributes, options }, [sent.buffer]);
         });
       }
     }
     await onThisThread();
-    return decode_draco(bytes, attributes);
+    signal?.throwIfAborted();
+    return decode_draco(bytes, attributes, options);
   }
 
   return {
